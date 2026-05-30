@@ -77,6 +77,39 @@ import pickle
 import json
 import re
 import shutil
+
+try:
+    import site_dev_agent as _site_dev
+except ImportError:
+    _site_dev = None
+
+try:
+    import knowledge_engine as _knowledge
+except ImportError:
+    _knowledge = None
+
+try:
+    import document_ingest as _doc_ingest
+except ImportError:
+    _doc_ingest = None
+
+try:
+    import document_cognition as _doc_cognition
+except ImportError:
+    _doc_cognition = None
+
+try:
+    from web_dev_engine import (
+        PROMPT_SENIOR_FULLSTACK,
+        auditer_projet,
+        formater_rapport_audit,
+        valider_apres_ecriture,
+    )
+except ImportError:
+    PROMPT_SENIOR_FULLSTACK = ""
+    auditer_projet = None
+    formater_rapport_audit = lambda a: str(a)
+    valider_apres_ecriture = lambda p, c: []
 from pathlib import Path
 from datetime import datetime
 # --- PyAudio (micro/reconnaissance vocale) : optionnel ---
@@ -351,6 +384,8 @@ _MOTS_TACHE_DEV = (
     "analyse la structure", "analyse le dossier", "webdev", "corrige le build",
     "run build", "hello world", "composant", "page web", "modifie le fichier",
     "écris dans", "ecris dans", "génère le", "genere le",
+    "crée un site", "creer un site", "créer un site", "faire un site", "fait un site",
+    "site web", "site internet", "page internet", "landing page",
 )
 
 
@@ -455,6 +490,21 @@ async def ws_handler(websocket):
                     if texte:
                         print(f"[HUD] Commande clavier : {texte}")
                         asyncio.ensure_future(traiter_reponse_ia(texte))
+                elif data.get("type") == "document_upload":
+                    print(f"[DOC] Upload recu : {data.get('filename', '?')}")
+                    asyncio.ensure_future(traiter_upload_document(data, websocket))
+                elif data.get("type") == "document_scan":
+                    print("[DOC] Scan jarvis_uploads demande")
+                    asyncio.ensure_future(_scan_et_repondre(websocket))
+                elif data.get("type") == "list_documents":
+                    _ensure_site_dev()
+                    docs = []
+                    if _doc_ingest:
+                        docs = [
+                            {"filename": d["filename"], "date": d["date"], "chars": d["chars"], "context": d.get("context")}
+                            for d in _doc_ingest.lister_documents()
+                        ]
+                    await websocket.send(json.dumps({"type": "documents_list", "documents": docs}))
                 elif data.get("type") == "screen_frame":
                     req_id = data.get("id")
                     if req_id in PENDING_SCREEN_CAPTURES:
@@ -675,7 +725,10 @@ builtins.request_screen_capture = request_screen_capture
 LEARNING_BASE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis_learning_base.json")
 
 def charger_base_apprentissage():
-    """Charge les connaissances acquises de manière autonome par JARVIS."""
+    """Charge les connaissances (compat v1 et v2)."""
+    if _knowledge:
+        _knowledge.init(JARVIS_ROOT)
+        return _knowledge._charger_raw()
     if os.path.exists(LEARNING_BASE_FILE):
         try:
             with open(LEARNING_BASE_FILE, "r", encoding="utf-8") as f:
@@ -684,36 +737,157 @@ def charger_base_apprentissage():
             return {}
     return {}
 
-def sauvegarder_connaissance(sujet, description, code_exemple=""):
-    """Permet à JARVIS d'écrire lui-même une nouvelle compétence apprise."""
+
+def compter_connaissances() -> int:
+    if _knowledge:
+        _knowledge.init(JARVIS_ROOT)
+        return _knowledge.compter()
     base = charger_base_apprentissage()
-    base[sujet.lower()] = {
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "description": description,
-        "code": code_exemple
-    }
+    if isinstance(base, dict) and base.get("_schema") == "v2":
+        return len(base.get("entries", {}))
+    return len(base) if isinstance(base, dict) else 0
+
+
+def sauvegarder_connaissance(sujet, description, code_exemple=""):
+    """Enregistre dans la base structurée v2 (filtre le bruit)."""
+    if _knowledge:
+        _knowledge.init(JARVIS_ROOT)
+        cat = "code" if code_exemple and len(str(code_exemple)) > 20 else "web"
+        r = _knowledge.memoriser(
+            sujet, description, str(code_exemple or ""), categorie=cat, source="jarvis"
+        )
+        return r.get("message", "Erreur mémorisation")
     try:
         with open(LEARNING_BASE_FILE, "w", encoding="utf-8") as f:
-            json.dump(base, f, ensure_ascii=False, indent=4)
-        print(f"[AUTO-APPRENTISSAGE] Nouvelle connaissance acquise : {sujet}")
-        return f"Connaissance mémorisée avec succès sur le sujet : {sujet}"
+            json.dump(
+                {str(sujet).lower(): {
+                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "description": description,
+                    "code": code_exemple,
+                }},
+                f,
+                ensure_ascii=False,
+                indent=4,
+            )
+        return f"Connaissance mémorisée : {sujet}"
     except Exception as e:
-        return f"Erreur lors de l'enregistrement de la connaissance : {e}"
+        return f"Erreur mémorisation : {e}"
+
 
 def injecter_connaissances_dans_prompt():
-    """Formate les connaissances apprises pour le prompt système."""
+    """Connaissances + processus pour le prompt système."""
+    if _knowledge:
+        _knowledge.init(JARVIS_ROOT)
+        return _knowledge.contexte_processus("creation_site") + _knowledge.injecter_format_legacy()
     base = charger_base_apprentissage()
+    entries = base.get("entries", {}) if isinstance(base, dict) and base.get("_schema") == "v2" else {}
+    if entries:
+        ctx = "\n\n=== CONNAISSANCES JARVIS ===\n"
+        for ent in list(entries.values())[-40:]:
+            ctx += f"- [{ent.get('categorie')}] {ent.get('sujet')}: {ent.get('description', '')[:300]}\n"
+            if ent.get("code"):
+                ctx += f"  Code: {ent['code'][:400]}\n"
+        return ctx
     if not base:
         return ""
-    ctx = "\n\n=== CONNAISSANCES AUTO-APPRISES PAR JARVIS ===\n"
-    # Limiter à 50 connaissances pour ne pas exploser le contexte
-    items = list(base.items())[-50:]
-    for sujet, info in items:
-        ctx += f"- Sujet: {sujet.upper()} (Appris le {info['date']})\n"
-        ctx += f"  Description: {info['description']}\n"
-        if info.get('code'):
-            ctx += f"  Exemple de Code:\n{info['code']}\n"
+    ctx = "\n\n=== CONNAISSANCES AUTO-APPRISES ===\n"
+    for sujet, info in list(base.items())[-50:]:
+        if not isinstance(info, dict):
+            continue
+        ctx += f"- {sujet}: {info.get('description', '')[:300]}\n"
     return ctx
+
+
+async def apprendre_code_utilisateur(sujet: str, code: str, description: str = "") -> str:
+    if _knowledge:
+        _knowledge.init(JARVIS_ROOT)
+        return _knowledge.apprendre_code(sujet, code, description, source="utilisateur").get("message", "")
+    return sauvegarder_connaissance(sujet or "code", description or "Code fourni", code)
+
+
+def _extraire_code_du_texte(texte: str) -> tuple[str, str]:
+    m = re.search(r"```[\w]*\n([\s\S]+?)```", texte)
+    if m:
+        return (texte.replace(m.group(0), "").strip()[:100] or "snippet"), m.group(1).strip()
+    if "<html" in texte.lower() or texte.count("\n") >= 3:
+        if any(x in texte for x in ("function ", "def ", "<html", ".css", "=>")):
+            return "code utilisateur", texte
+    return "", ""
+
+
+async def enrichir_par_recherche_web(sujet, contexte_erreur=""):
+    """Recherche web → structuration → base de connaissances."""
+    sujet = (sujet or "information").strip()[:120]
+    requete = f"{sujet} {contexte_erreur}"[:200] if contexte_erreur else sujet
+    print(f"[AUTO-APPRENTISSAGE] Recherche web : {requete}")
+    try:
+        resultat = await executer_outil_webdev(
+            "webdev_recherche_web", {"requete": requete}, requete
+        )
+    except Exception as e:
+        print(f"[AUTO-APPRENTISSAGE] Erreur recherche : {e}")
+        return None
+    if not resultat or "échouée" in str(resultat).lower() or "impossible" in str(resultat).lower():
+        return None
+    if _knowledge:
+        _knowledge.init(JARVIS_ROOT)
+        r = _knowledge.apprendre_depuis_web(sujet, str(resultat)[:3000])
+        return r.get("message") if r.get("ok") else None
+    return sauvegarder_connaissance(sujet, str(resultat)[:2500], "")
+
+
+def executer_commande_native_windows(cmd, cwd):
+    """
+    Interprète des commandes type bash (mkdir -p, touch, &&) sous Windows.
+    Évite mkdir/touch/bash qui échouent dans cmd.exe.
+    """
+    logs = []
+    cwd = os.path.normpath(cwd or JARVIS_ROOT)
+
+    def _mkdir(rel_path):
+        rel_path = rel_path.replace("\\", "/").strip().strip("/")
+        if not rel_path:
+            return
+        full = rel_path if os.path.isabs(rel_path) else os.path.join(cwd, rel_path)
+        os.makedirs(full, exist_ok=True)
+        logs.append(f"Dossier créé : {full}")
+
+    def _touch(rel_path):
+        rel_path = rel_path.replace("\\", "/").strip()
+        full = rel_path if os.path.isabs(rel_path) else os.path.join(cwd, rel_path)
+        parent = os.path.dirname(full)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        if not os.path.exists(full):
+            with open(full, "w", encoding="utf-8") as f:
+                f.write("")
+        logs.append(f"Fichier créé : {full}")
+
+    for segment in re.split(r"\s*&&\s*", cmd):
+        segment = segment.strip()
+        if not segment:
+            continue
+        # mkdir -p projet/{a,b,c}
+        m_brace = re.match(r"mkdir\s+(?:-p\s+)?([^\s{]+)\{([^}]+)\}", segment)
+        if m_brace:
+            base, inner = m_brace.group(1).strip("/"), m_brace.group(2)
+            for sub in inner.split(","):
+                _mkdir(f"{base}/{sub.strip()}")
+            continue
+        if segment.startswith("mkdir -p "):
+            _mkdir(segment[9:].strip())
+            continue
+        if segment.startswith("mkdir "):
+            _mkdir(segment[6:].strip())
+            continue
+        if segment.startswith("touch "):
+            for f in segment[6:].split():
+                _touch(f)
+            continue
+        return None
+
+    return "\n".join(logs) if logs else None
+
 
 def extraire_blocs_json(texte):
     """Extrait des objets JSON valides (accolades équilibrées) depuis une réponse IA."""
@@ -772,7 +946,8 @@ def construire_system_prompt():
         f"Tu as accès aux conversations passées avec {USER_NAME} (incluses dans l'historique), "
         "ce qui te permet de te souvenir de ce qui a été dit dans les sessions précédentes.\n\n"
         "TES CAPACITÉS EXPERTES EN DEV WEB :\n"
-        "- Tu maîtrises l'écosystème moderne : HTML5, CSS3, JavaScript (ES6+), TypeScript, React, Next.js 15 (App Router), Node.js, "
+        + (PROMPT_SENIOR_FULLSTACK + "\n" if PROMPT_SENIOR_FULLSTACK else "")
+        + "- Tu maîtrises l'écosystème moderne : HTML5, CSS3, JavaScript (ES6+), TypeScript, React, Next.js 15 (App Router), Node.js, "
         "Python (FastAPI, Flask, Django), TailwindCSS, Git et Docker.\n"
         "- Tu es capable de structurer un projet de A à Z, d'écrire du code propre (Clean Code), documenté et sécurisé.\n"
         "- Tu as la capacité de lancer un agent autonome pour résoudre un problème complexe en combinant plusieurs actions.\n"
@@ -796,11 +971,23 @@ def construire_system_prompt():
         '{"action": "webdev_lire_fichier", "chemin_fichier": "chemin/du/fichier.py"}\n'
         '{"action": "webdev_creer_dossier", "chemin_dossier": "frontend/mon-projet"}\n'
         '{"action": "webdev_ecrire_fichier", "chemin_fichier": "chemin/du/fichier.js", "contenu": "le code complet ici"}\n'
-        '{"action": "webdev_executer_commande", "commande": "npm run build ou python script.py"}\n'
+        '{"action": "webdev_supprimer_fichier", "chemin_fichier": "chemin/fichier.js"}\n'
+        '{"action": "webdev_supprimer_dossier", "chemin_dossier": "projects/sites/ancien"}\n'
+        '{"action": "webdev_renommer_fichier", "ancien": "ancien.html", "nouveau": "nouveau.html"}\n'
+        '{"action": "webdev_valider_projet", "chemin_dossier": "projects/sites/mon-site"}\n'
+        '{"action": "webdev_executer_commande", "commande": "npm run build"}\n'
+        "CREATION SITE A→Z : si l utilisateur dit creer un site web, pose des questions une par une "
+        "jusqu a assez d infos puis execute webdev_* pour tout generer (arborescence + fichiers complets).\n"
+        "IMPORTANT WINDOWS : n utilise JAMAIS mkdir -p, touch, ni syntaxe bash {a,b,c}. "
+        "Utilise webdev_creer_dossier et webdev_ecrire_fichier a la place.\n"
         '{"action": "webdev_recherche_web", "requete": "documentation tailwind v4 grid"}\n'
         '{"action": "webdev_auto_apprendre", "sujet": "Nom du concept", "description": "Explication", "code_exemple": "Exemple"}\n'
         '{"action": "webdev_apprendre_web", "requete": "sujet à apprendre", "url": "https://optionnel"}\n'
+        '{"action": "webdev_apprendre_code", "sujet": "nom du pattern", "code": "code complet", "description": "optionnel"}\n'
         '{"action": "set_mode_dev", "mode": "assistant|autonomous|learn|off"}\n\n'
+        "PROCESSUS CRÉATION SITE (ordre obligatoire) :\n"
+        "collecte_documents → analyse_cognitive → briefing → scaffold → developpement → validation → apprentissage_retour.\n"
+        "Ne saute jamais une étape obligatoire. Réutilise la base de connaissances avant de réinventer.\n\n"
         "MODES DE TRAVAIL DEV WEB :\n"
         "- assistant : une action JSON à la fois, puis explication.\n"
         "- autonomous : enchaîne analyse → lecture → écriture → commande terminal jusqu'à résoudre la tâche.\n"
@@ -826,6 +1013,22 @@ def construire_system_prompt():
             "utilise les actions webdev_* en JSON — n'explique pas sans exécuter.\n\n"
         )
     base += connaissances_apprises
+    if _site_dev:
+        fp = getattr(_site_dev, "_formation_path", "")
+        if fp and os.path.isdir(fp):
+            base += (
+                f"\n\nCOURS UTILISATEUR (FORMATION) : {fp}\n"
+                "Pour créer un site, inspire-toi des exercices html_css et du PROJET FIL ROUGE "
+                "(structure assets/css, sidebar, pages multiples).\n"
+            )
+    if _doc_cognition:
+        ctx_proj = _doc_cognition.contexte_memoire_projet()
+        if ctx_proj:
+            base += ctx_proj
+    if _doc_ingest:
+        ctx_docs = _doc_ingest.contexte_pour_prompt()
+        if ctx_docs:
+            base += ctx_docs
     base += (
         f"\n\nTu es connecte a Home Assistant, la domotique de {USER_NAME}.\n"
         "ROUTAGE DES REPONSES :\n"
@@ -1761,6 +1964,69 @@ async def resoudre_extras_locaux(texte):
     if any(k in t for k in ["désactive le mode dev", "desactive le mode dev", "quitte le mode dev", "mode dev off"]):
         return activer_mode_dev("off")
 
+    if any(
+        k in t
+        for k in [
+            "apprends ce code",
+            "apprend ce code",
+            "memorise ce code",
+            "mémorise ce code",
+            "retiens ce code",
+            "apprends le code",
+            "memorise le code",
+            "mémorise le code",
+        ]
+    ):
+        sujet, code = _extraire_code_du_texte(texte)
+        if code:
+            return await apprendre_code_utilisateur(sujet, code, texte[:400])
+        return "Collez votre code entre triple backticks ou envoyez-le juste après la commande."
+
+    if any(k in t for k in ["apprends sur le web", "apprend sur le web", "recherche et apprends"]):
+        sujet = re.sub(
+            r".*(apprends|apprend|recherche et apprends)\s+(?:sur le web\s+)?(?:sur\s+)?",
+            "",
+            texte,
+            flags=re.I,
+        ).strip()
+        if len(sujet) >= 4:
+            r = await enrichir_par_recherche_web(sujet)
+            return r or f"Recherche effectuée sur {sujet} sans résultat mémorisable."
+        return "De quoi voulez-vous que j'apprenne ? Par exemple : apprends sur le web Flexbox CSS."
+
+    if any(
+        k in t
+        for k in [
+            "où est ta base",
+            "ou est ta base",
+            "ta base de données",
+            "ta base de donnees",
+            "fichier d'apprentissage",
+            "jarvis_learning",
+            "briefing site",
+            "état du site",
+        ]
+    ):
+        if "briefing" in t or "état du site" in t or "etat du site" in t:
+            _ensure_site_dev()
+            if _site_dev and _site_dev.briefing_actif():
+                return "Briefing site web en cours. " + (_site_dev.get_briefing_resume() or "")
+            if _site_dev and _site_dev.en_developpement_site():
+                return f"Je suis en train de développer le site dans {_site_dev.chemin_projet_site()}."
+        n = compter_connaissances()
+        fp = ""
+        if _site_dev:
+            _ensure_site_dev()
+            fp = f" Cours : {getattr(_site_dev, '_formation_path', '')}."
+        proc = ""
+        if _knowledge:
+            _knowledge.init(JARVIS_ROOT)
+            proc = " " + _knowledge.contexte_processus("creation_site").replace("\n", " ")[:200]
+        return (
+            f"Ma base d'apprentissage est le fichier {LEARNING_BASE_FILE}. "
+            f"Elle contient {n} connaissance(s).{fp}{proc}"
+        )
+
     # ══ MINUTERIE ══════════════════════════════════════════════
     if any(k in t for k in ["minuteur", "minuterie", "timer", "rappelle-moi dans",
                              "rappelle moi dans", "alarme dans", "alerte dans",
@@ -2530,7 +2796,22 @@ async def demander_ia(texte, contexte_extra=None, skip_local=False, persister_hi
         if len(texte.split()) > 2:
             res_serp = recherche_web_serpapi(texte)
             if res_serp and "VOTRE_CLE" not in res_serp and "rien trouvé" not in res_serp and "erreur" not in res_serp.lower():
+                try:
+                    await enrichir_par_recherche_web(texte, contexte_erreur=res_serp[:300])
+                except Exception:
+                    pass
                 return "Voici ce que j'ai trouvé sur le web : " + res_serp
+
+        # Enrichir la base d'apprentissage même si les LLM ont échoué
+        try:
+            appris = await enrichir_par_recherche_web(texte)
+            if appris:
+                return (
+                    f"Je n'ai pas pu répondre via mes modèles IA, mais j'ai recherché sur le web "
+                    f"et enrichi ma base : {LEARNING_BASE_FILE}. {appris}"
+                )
+        except Exception:
+            pass
 
         # ── Détection : aucune API configurée ou toutes en erreur ──────────
         _aucune_api = (not gemini_actif and not groq_client and not grok_client and not anthropic_client)
@@ -3132,7 +3413,13 @@ async def resoudre_commandes_locales(texte):
 #  MOTEUR D'ACTIONS AUTONOMES — DEV WEB & APPRENTISSAGE
 # ══════════════════════════════════════════════════════════════
 _AUTONOMY_DEPTH = 0  # Compteur anti-boucle infinie
-_MAX_AUTONOMY_DEPTH = 5  # Max 5 itérations d'autonomie
+_MAX_AUTONOMY_DEPTH = 5  # Max itérations ReAct (30 pendant création site A→Z)
+
+
+def _max_react_depth():
+    if _site_dev:
+        return _site_dev.get_max_react_depth()
+    return _MAX_AUTONOMY_DEPTH
 
 async def executer_outil_webdev(action, data, texte_utilisateur):
     """Exécute l'action demandée par le modèle et renvoie le feedback technique à JARVIS."""
@@ -3179,7 +3466,64 @@ async def executer_outil_webdev(action, data, texte_utilisateur):
                 os.makedirs(parent, exist_ok=True)
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(contenu)
-            return f"Fichier {file_path} créé/modifié avec succès ({len(contenu)} caractères écrits)."
+            msg = f"Fichier {file_path} créé/modifié ({len(contenu)} caractères)."
+            validation = valider_apres_ecriture(file_path, contenu)
+            if validation:
+                msg += "\n[VALIDATION] ERREURS À CORRIGER IMMÉDIATEMENT :\n"
+                msg += "\n".join(f"- {v}" for v in validation)
+                msg += "\nRelance webdev_ecrire_fichier avec le fichier corrigé et complet."
+            return msg
+
+        elif action == "webdev_valider_projet":
+            path = resoudre_chemin_projet(data.get("chemin_dossier", "."))
+            stack = data.get("stack", "static")
+            if not auditer_projet:
+                return "Module web_dev_engine indisponible."
+            audit = auditer_projet(path, stack)
+            rapport = formater_rapport_audit(audit)
+            if audit.get("ok"):
+                if _knowledge:
+                    _knowledge.init(JARVIS_ROOT)
+                    _knowledge.marquer_etape("developpement", "done")
+                    _knowledge.marquer_etape("validation", "done")
+                    idx = os.path.join(path, "frontend", "index.html")
+                    if not os.path.isfile(idx):
+                        idx = os.path.join(path, "index.html")
+                    snippet = ""
+                    if os.path.isfile(idx):
+                        with open(idx, "r", encoding="utf-8", errors="replace") as f:
+                            snippet = f.read()[:4000]
+                    if snippet:
+                        _knowledge.apprendre_code(
+                            f"site validé {os.path.basename(path)}",
+                            snippet,
+                            f"Projet validé sans erreur — stack {stack}",
+                            source="projet_reussi",
+                        )
+                    _knowledge.marquer_etape("apprentissage_retour", "done")
+                rapport += "\n\n[PROCESSUS] Validation OK — patterns mémorisés pour réutilisation future."
+            if not audit.get("ok"):
+                rapport += "\n\nOBLIGATION : corriger chaque [ERREUR] avec webdev_ecrire_fichier puis re-valider."
+            return rapport
+
+        elif action == "webdev_patch_fichier":
+            file_path = resoudre_chemin_projet(data.get("chemin_fichier", ""))
+            ancien = data.get("ancien_texte", "")
+            nouveau = data.get("nouveau_texte", "")
+            if not file_path or not os.path.isfile(file_path):
+                return f"Fichier introuvable : {file_path}"
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+            if ancien not in content:
+                return f"Texte à remplacer introuvable dans {file_path}"
+            content = content.replace(ancien, nouveau, 1)
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            validation = valider_apres_ecriture(file_path, content)
+            msg = f"Patch appliqué sur {file_path}."
+            if validation:
+                msg += "\n[VALIDATION] " + "; ".join(validation)
+            return msg
 
         elif action == "webdev_executer_commande":
             cmd = data.get("commande", "")
@@ -3188,15 +3532,31 @@ async def executer_outil_webdev(action, data, texte_utilisateur):
             if any(interdit in cmd.lower() for interdit in _cmd_interdites):
                 return f"Commande refusée par sécurité : {cmd}"
             cwd = resoudre_chemin_projet(data.get("cwd", "."))
+            # Bash → actions natives Windows (mkdir/touch)
+            natif = executer_commande_native_windows(cmd, cwd)
+            if natif:
+                print(f"[EXECUTION NATIVE] {cmd[:80]}...")
+                return f"Commande interprétée sous Windows :\n{natif}"
             print(f"[EXECUTION TERMINAL] Lancement : {cmd} (cwd={cwd})")
+            if os.name == "nt" and any(x in cmd for x in ("mkdir -p", "touch ", "&&", "{", "}")):
+                msg = (
+                    "Commande bash non supportée sous Windows. "
+                    "Utilisez webdev_creer_dossier et webdev_ecrire_fichier."
+                )
+                await enrichir_par_recherche_web(
+                    "créer dossiers fichiers site web Windows Python",
+                    contexte_erreur=cmd[:100],
+                )
+                return msg
             process = await asyncio.create_subprocess_shell(
                 cmd,
                 cwd=cwd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
+            cmd_timeout = 120.0 if any(x in cmd.lower() for x in ("npm install", "npm i", "pip install", "yarn")) else 30.0
             try:
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=cmd_timeout)
                 out = stdout.decode("utf-8", errors="ignore")[-3000:]  # Limiter la sortie
                 err = stderr.decode("utf-8", errors="ignore")[-1000:]
                 result = f"Sortie standard :\n{out}"
@@ -3208,7 +3568,7 @@ async def executer_outil_webdev(action, data, texte_utilisateur):
                     process.kill()
                 except Exception:
                     pass
-                return "La commande a mis trop de temps à s'exécuter (Timeout 30s)."
+                return f"La commande a mis trop de temps (Timeout {int(cmd_timeout)}s)."
 
         elif action == "webdev_recherche_web":
             req = data.get("requete", "")
@@ -3274,9 +3634,24 @@ async def executer_outil_webdev(action, data, texte_utilisateur):
             if not contenu_appris:
                 return "Aucun contenu web à mémoriser. Fournissez une requête ou une URL."
             sujet = req or url or "documentation_web"
+            if _knowledge:
+                _knowledge.init(JARVIS_ROOT)
+                r = _knowledge.apprendre_depuis_web(sujet, contenu_appris[:3000], url)
+                return r.get("message", "Erreur mémorisation web")
             desc = data.get("description") or contenu_appris[:2000]
             code = data.get("code_exemple", "")
             return sauvegarder_connaissance(sujet, desc, code)
+
+        elif action == "webdev_apprendre_code":
+            code = data.get("code") or data.get("code_exemple") or ""
+            sujet = data.get("sujet") or data.get("nom") or "pattern code"
+            desc = data.get("description") or ""
+            if not code or len(code.strip()) < 10:
+                return "Code trop court. Fournissez le champ code (min. 10 caractères)."
+            if _knowledge:
+                _knowledge.init(JARVIS_ROOT)
+                return _knowledge.apprendre_code(sujet, code, desc, source="jarvis").get("message", "")
+            return sauvegarder_connaissance(sujet, desc or "Code mémorisé", code)
 
         elif action == "webdev_auto_apprendre":
             sujet = data.get("sujet", "inconnu")
@@ -3284,19 +3659,69 @@ async def executer_outil_webdev(action, data, texte_utilisateur):
             code = data.get("code_exemple", "")
             return sauvegarder_connaissance(sujet, desc, code)
 
+        elif action == "webdev_supprimer_fichier":
+            file_path = resoudre_chemin_projet(data.get("chemin_fichier", ""))
+            if not file_path or not os.path.exists(file_path):
+                return f"Fichier introuvable : {file_path}"
+            if os.path.isdir(file_path):
+                return f"Refusé : {file_path} est un dossier. Utilisez une commande dédiée."
+            os.remove(file_path)
+            return f"Fichier supprimé : {file_path}"
+
+        elif action == "webdev_supprimer_dossier":
+            dir_path = resoudre_chemin_projet(data.get("chemin_dossier", ""))
+            if not dir_path or not os.path.isdir(dir_path):
+                return f"Dossier introuvable : {dir_path}"
+            jarvis_norm = os.path.normcase(JARVIS_ROOT)
+            dir_norm = os.path.normcase(os.path.abspath(dir_path))
+            if not dir_norm.startswith(jarvis_norm):
+                return "Refusé : suppression hors racine JARVIS."
+            if dir_norm == jarvis_norm or "projects" not in dir_norm.replace("\\", "/"):
+                return "Refusé : dossier protégé."
+            shutil.rmtree(dir_path)
+            return f"Dossier supprimé : {dir_path}"
+
+        elif action == "webdev_renommer_fichier":
+            ancien = resoudre_chemin_projet(data.get("ancien", ""))
+            nouveau = resoudre_chemin_projet(data.get("nouveau", ""))
+            if not ancien or not os.path.exists(ancien):
+                return f"Fichier source introuvable : {ancien}"
+            parent = os.path.dirname(nouveau)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            os.rename(ancien, nouveau)
+            return f"Renommé : {ancien} → {nouveau}"
+
     except Exception as e:
-        return f"Erreur lors de l'exécution de l'outil {action} : {e}"
+        err = f"Erreur lors de l'exécution de l'outil {action} : {e}"
+        try:
+            appris = await enrichir_par_recherche_web(
+                f"erreur jarvis {action}",
+                contexte_erreur=str(e)[:200],
+            )
+            if appris:
+                err += f"\n[AUTO-APPRENTISSAGE] {appris}"
+        except Exception:
+            pass
+        return err
     return None
 
 async def _obtenir_reponse_ia_initiale(texte_utilisateur, mobile_ws=None):
     """Résolution locale puis appel LLM — utilisé avant la boucle d'actions JSON."""
+    global MODE_DEV_WEB
     if est_tache_dev_web(texte_utilisateur):
-        prefix = ""
-        if MODE_DEV_WEB == "autonomous":
-            prefix = (
-                "[MODE AUTONOME DEV] Exécute la tâche par actions JSON webdev_* en chaîne. "
-                "Commence par webdev_creer_dossier ou webdev_analyser_structure si besoin.\n"
-            )
+        prefix = (
+            "[TACHE DEV WEB FULLSTACK SENIOR — WINDOWS]\n"
+            + (PROMPT_SENIOR_FULLSTACK[:800] + "\n" if PROMPT_SENIOR_FULLSTACK else "")
+            + "INTERDIT : mkdir -p, touch, bash. "
+            "OBLIGATOIRE : webdev_* + webdev_valider_projet en fin de tâche.\n"
+        )
+        if not MODE_DEV_WEB:
+            MODE_DEV_WEB = "autonomous"
+        prefix += (
+            "[MODE AUTONOME] Enchaîne les actions JSON jusqu'à livrer le résultat sans erreur. "
+            "Termine par webdev_valider_projet.\n"
+        )
         return await demander_ia(prefix + texte_utilisateur, skip_local=True)
 
     reponse = await resoudre_commandes_locales(texte_utilisateur)
@@ -3361,8 +3786,42 @@ async def _obtenir_reponse_ia_initiale(texte_utilisateur, mobile_ws=None):
     return reponse
 
 async def traiter_reponse_ia(texte_utilisateur, mobile_ws=None, _react_depth=0, reponse_forcee=None):
-    global MODE_IRON_MAN, jarvis_actif, dernier_message, _skip_pc_audio, _AUTONOMY_DEPTH
+    global MODE_IRON_MAN, jarvis_actif, dernier_message, _skip_pc_audio, _AUTONOMY_DEPTH, MODE_DEV_WEB
     _skip_pc_audio = False
+    _ensure_site_dev()
+
+    if reponse_forcee is None and _site_dev:
+        if _site_dev.briefing_actif() and not texte_utilisateur.startswith("[CREATION SITE WEB"):
+            handled, msg, lancer = _site_dev.traiter_reponse_briefing(texte_utilisateur)
+            if handled:
+                scan = any(
+                    m in texte_utilisateur.lower()
+                    for m in (
+                        "scanne les documents", "scan les documents", "analyse les documents",
+                        "analyse les uploads", "importe les documents",
+                    )
+                )
+                if scan:
+                    await parler("J'analyse vos documents avec le raisonnement cognitif.")
+                    resume = await pipeline_cognition_documents()
+                    await parler(resume)
+                elif msg:
+                    await parler(msg)
+                if lancer:
+                    await parler("Je demarre le developpement complet du site.")
+                    await traiter_reponse_ia(_site_dev.construire_prompt_developpement())
+                return
+        if (
+            _site_dev.detecter_demande_site(texte_utilisateur)
+            and not _site_dev.briefing_actif()
+            and not _site_dev.en_developpement_site()
+        ):
+            jarvis_actif = True
+            await parler(_site_dev.demarrer_briefing(texte_utilisateur))
+            return
+
+    if texte_utilisateur.startswith("[CREATION SITE WEB"):
+        MODE_DEV_WEB = "autonomous"
 
     if reponse_forcee is not None:
         reponse = reponse_forcee
@@ -3395,6 +3854,34 @@ async def traiter_reponse_ia(texte_utilisateur, mobile_ws=None, _react_depth=0, 
                 )
                 _skip_pc_audio = False
                 return
+        rl = (reponse or "").lower()
+        if any(
+            x in rl
+            for x in (
+                "je ne peux pas",
+                "je ne sais pas",
+                "impossible de",
+                "je n'ai pas accès",
+                "je n ai pas acces",
+            )
+        ):
+            try:
+                appris = await enrichir_par_recherche_web(texte_utilisateur, contexte_erreur=reponse[:200])
+                if appris:
+                    retry = await demander_ia(
+                        texte_utilisateur
+                        + "\n\n[Nouvelles connaissances acquises sur le web — réessaie avec webdev_* si action fichier/code :]\n"
+                        + appris[:1500],
+                        skip_local=True,
+                        persister_historique=False,
+                    )
+                    if retry:
+                        await traiter_reponse_ia(
+                            texte_utilisateur, mobile_ws, _react_depth, reponse_forcee=retry
+                        )
+                        return
+            except Exception as e:
+                print(f"[AUTO-APPRENTISSAGE] Échec relance : {e}")
         await parler(reponse)
         _skip_pc_audio = False
         return
@@ -3869,9 +4356,10 @@ async def traiter_reponse_ia(texte_utilisateur, mobile_ws=None, _react_depth=0, 
     if texte_hors_json and not webdev_feedbacks:
         await parler(texte_hors_json)
 
-    if webdev_feedbacks and _react_depth < _MAX_AUTONOMY_DEPTH:
+    _depth_max = _max_react_depth()
+    if webdev_feedbacks and _react_depth < _depth_max:
         feedback = "\n\n".join(webdev_feedbacks)
-        print(f"[REACT] Itération {_react_depth + 1}/{_MAX_AUTONOMY_DEPTH}")
+        print(f"[REACT] Itération {_react_depth + 1}/{_depth_max}")
         if MODE_DEV_WEB and _react_depth == 0:
             await parler(f"Étape {_react_depth + 1} terminée. Je continue...")
         suite = await demander_ia(
@@ -3887,15 +4375,76 @@ async def traiter_reponse_ia(texte_utilisateur, mobile_ws=None, _react_depth=0, 
                 )
                 _skip_pc_audio = False
                 return
+            elif any("[VALIDATION]" in fb for fb in webdev_feedbacks):
+                fix = await demander_ia(
+                    texte_utilisateur,
+                    contexte_extra=feedback + "\n\nRéponds UNIQUEMENT avec JSON webdev_ecrire_fichier pour corriger [VALIDATION].",
+                    skip_local=True,
+                    persister_historique=False,
+                )
+                if fix and extraire_blocs_json(fix):
+                    await traiter_reponse_ia(
+                        texte_utilisateur, mobile_ws, _react_depth + 1, reponse_forcee=fix
+                    )
+                    _skip_pc_audio = False
+                    return
             else:
                 await parler(suite)
-    elif webdev_feedbacks and _react_depth >= _MAX_AUTONOMY_DEPTH:
+                if _finaliser_site_si_termine():
+                    await parler(
+                        f"Le site est prêt dans {_site_dev.chemin_projet_site() if _site_dev else 'projects/sites'}. "
+                        "Dites-moi si vous voulez modifier ou supprimer des fichiers."
+                    )
+    elif webdev_feedbacks and _react_depth >= _depth_max:
         await parler(
-            f"Limite d'autonomie atteinte ({_MAX_AUTONOMY_DEPTH} étapes). "
+            f"Limite d'autonomie atteinte ({_depth_max} étapes). "
             f"Dernier rapport : {webdev_feedbacks[-1][:300]}"
         )
+        if _site_dev and _site_dev.en_developpement_site() and auditer_projet:
+            chemin = resoudre_chemin_projet(_site_dev.get_chemin_projet())
+            audit = auditer_projet(chemin, _site_dev.get_stack_projet())
+            await parler(formater_rapport_audit(audit)[:400])
+        if _site_dev and _site_dev.en_developpement_site():
+            _site_dev.terminer_developpement()
+    elif webdev_feedbacks and _react_depth > 0:
+        if _site_dev and _site_dev.en_developpement_site() and auditer_projet:
+            chemin = resoudre_chemin_projet(_site_dev.get_chemin_projet())
+            audit = auditer_projet(chemin, _site_dev.get_stack_projet())
+            if audit.get("ok"):
+                _site_dev.terminer_developpement()
+                await parler(
+                    f"Projet validé sans erreur dans {_site_dev.get_chemin_projet()}. "
+                    "Ouvrez index.html dans votre navigateur."
+                )
+            elif _react_depth < _depth_max - 1:
+                print("[AUDIT] Erreurs détectées — relance ReAct corrective")
+                suite_audit = await demander_ia(
+                    texte_utilisateur,
+                    contexte_extra=formater_rapport_audit(audit) + "\n\nCorrige TOUTES les erreurs avec webdev_ecrire_fichier.",
+                    skip_local=True,
+                    persister_historique=False,
+                )
+                if suite_audit and extraire_blocs_json(suite_audit):
+                    await traiter_reponse_ia(
+                        texte_utilisateur, mobile_ws, _react_depth + 1, reponse_forcee=suite_audit
+                    )
+                    _skip_pc_audio = False
+                    return
 
     _skip_pc_audio = False
+
+
+def _finaliser_site_si_termine():
+    """Marque le briefing site comme terminé si index.html existe."""
+    if not _site_dev or not _site_dev.en_developpement_site():
+        return
+    chemin_rel = _site_dev.chemin_projet_site()
+    base = resoudre_chemin_projet(chemin_rel)
+    for nom in ("index.html", "index.php"):
+        if os.path.isfile(os.path.join(base, nom)):
+            _site_dev.terminer_developpement()
+            return True
+    return False
 
 def nettoyer_commande(texte):
     t = texte.lower().strip()
@@ -3911,6 +4460,174 @@ def nettoyer_commande(texte):
 # ══════════════════════════════════════════════════════════════
 
 _JARVIS_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis_config.json")
+_site_dev_initialized = False
+_doc_ingest_initialized = False
+
+
+def _ensure_site_dev():
+    global _site_dev_initialized, _doc_ingest_initialized
+    if _knowledge:
+        _knowledge.init(JARVIS_ROOT)
+    if _doc_ingest and not _doc_ingest_initialized:
+        _doc_ingest.init(JARVIS_ROOT)
+        _doc_ingest_initialized = True
+    if _doc_cognition:
+        _doc_cognition.init(JARVIS_ROOT)
+    if not _site_dev or _site_dev_initialized:
+        return
+    cfg = {}
+    try:
+        if os.path.exists(_JARVIS_CONFIG_PATH):
+            with open(_JARVIS_CONFIG_PATH, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+    except Exception:
+        pass
+    _site_dev.init(JARVIS_ROOT, cfg.get("formation_path"))
+    _site_dev_initialized = True
+
+
+async def _scan_et_repondre(websocket=None):
+    await send_web_state("thinking")
+    msg = await pipeline_cognition_documents()
+    await send_web_state("idle")
+    if websocket:
+        try:
+            await websocket.send(json.dumps({"type": "document_scan_result", "ok": True, "message": msg[:500]}))
+        except Exception:
+            pass
+    await parler(msg)
+
+
+async def pipeline_cognition_documents(docs: list | None = None) -> str:
+    """Analyse cognitive LLM de tous les documents + mémoire long terme."""
+    if not _doc_cognition or not _doc_ingest:
+        return "Module cognition indisponible."
+
+    _ensure_site_dev()
+    importes = _doc_ingest.synchroniser_fichiers_disque("briefing")
+    if docs is None:
+        docs = importes + _doc_ingest.lister_documents()
+    if not docs:
+        return "Aucun document dans jarvis_uploads."
+
+    async def _llm(prompt: str):
+        return await demander_ia(prompt, skip_local=True, persister_historique=False)
+
+    analyses = 0
+    remplis_total: list[str] = []
+    for doc in docs:
+        if (doc.get("chars") or 0) < 15:
+            continue
+        spec = await _doc_cognition.analyser_et_memoriser(
+            doc, _llm, sauvegarder_connaissance
+        )
+        if not spec:
+            continue
+        analyses += 1
+        if _knowledge:
+            _knowledge.marquer_etape("analyse_cognitive", "in_progress")
+        doc["spec_cognitive"] = spec
+        if _site_dev:
+            remplis = _site_dev.fusionner_spec_cognitive(spec, doc)
+            remplis_total.extend(remplis)
+
+    if analyses and _knowledge:
+        _knowledge.marquer_etape("analyse_cognitive", "done")
+        _knowledge.marquer_etape("collecte_documents", "done")
+
+    msg = f"Analyse cognitive terminee : {analyses} document(s) memorise(s) en long terme."
+    if remplis_total:
+        msg += f" Briefing enrichi : {', '.join(set(remplis_total))}."
+    manque = ""
+    if _site_dev and _site_dev.briefing_actif():
+        rest = _site_dev.questions_restantes() if hasattr(_site_dev, "questions_restantes") else []
+        if rest:
+            manque = f" Il reste a preciser : {', '.join(q['id'] for q in rest[:3])}."
+        else:
+            manque = " Briefing complet. Dites lance le developpement."
+    return msg + manque
+
+
+async def traiter_upload_document(data: dict, websocket=None):
+    """Analyse un document téléversé depuis l'interface."""
+    if not _doc_ingest:
+        msg = "Module document_ingest indisponible."
+        if websocket:
+            await websocket.send(json.dumps({"type": "document_upload_result", "ok": False, "error": msg}))
+        await parler(msg)
+        return
+
+    _ensure_site_dev()
+    filename = data.get("filename", "document.txt")
+    b64 = data.get("data", "")
+    context = data.get("context", "general")
+    note = data.get("note", "")
+
+    try:
+        raw = await asyncio.to_thread(_doc_ingest.decoder_upload_b64, b64)
+        result = await asyncio.to_thread(
+            _doc_ingest.enregistrer_document, filename, raw, context, note
+        )
+    except Exception as e:
+        result = {"ok": False, "error": str(e)}
+
+    if not result.get("ok"):
+        err = result.get("error", "Erreur inconnue")
+        print(f"[DOC] Échec upload : {err}")
+        if websocket:
+            await websocket.send(json.dumps({"type": "document_upload_result", "ok": False, "error": err}))
+        await parler(f"Je n'ai pas pu lire le document. {err[:120]}")
+        return
+
+    doc = result["document"]
+    print(f"[DOC] Analysé : {doc['filename']} ({doc['chars']} car., {doc['methode']})")
+
+    # Analyse cognitive + mémoire long terme (jarvis_project_knowledge + learning_base)
+    spec = {}
+    if doc.get("chars", 0) > 20 and _doc_cognition:
+        await send_web_state("thinking")
+        try:
+            async def _llm(p):
+                return await demander_ia(p, skip_local=True, persister_historique=False)
+            spec = await _doc_cognition.analyser_et_memoriser(doc, _llm, sauvegarder_connaissance)
+        except Exception as e:
+            print(f"[COGNITION] {e}")
+        await send_web_state("idle")
+
+    champs_remplis = []
+    if _site_dev and spec:
+        champs_remplis = _site_dev.fusionner_spec_cognitive(spec, doc)
+    elif _site_dev and _site_dev.briefing_actif():
+        champs_remplis = _site_dev.integrer_document_briefing(doc)
+
+    vocal = f"Document {doc['filename']} ingere, {doc['chars']} caracteres, methode {doc['methode']}. "
+    if spec.get("resume_executif"):
+        vocal += "Analyse cognitive enregistree en memoire long terme. "
+    if doc.get("is_cahier_charges"):
+        vocal += "Cahier des charges detecte. "
+    if champs_remplis:
+        vocal += f"Briefing enrichi : {', '.join(champs_remplis)}. "
+    if _site_dev and _site_dev.collecte_documents_active():
+        vocal += "Dites scanne les documents ou continue sans document."
+    elif _site_dev and _site_dev.briefing_actif():
+        vocal += "Continuez ou dites lance le developpement."
+    else:
+        vocal += "Utilise pour le prochain projet web."
+
+    if websocket:
+        await websocket.send(json.dumps({
+            "type": "document_upload_result",
+            "ok": True,
+            "filename": doc["filename"],
+            "chars": doc["chars"],
+            "methode": doc["methode"],
+            "is_cahier_charges": doc.get("is_cahier_charges", False),
+            "champs_briefing": champs_remplis,
+            "resume": doc.get("resume", "")[:400],
+        }))
+
+    await parler(vocal)
+
 
 def _charger_config() -> dict:
     """Charge jarvis_config.json ou retourne un dict vide si absent/corrompu."""
@@ -4097,8 +4814,10 @@ def ecouter():
                 print(f"[MIC] Micro rechargé → index {new_idx}")
                 continue
 
-            # GESTION DU TIMEOUT DE SESSION
-            if jarvis_actif and (time.time() - dernier_message > SESSION_TIMEOUT):
+            # GESTION DU TIMEOUT DE SESSION (plus long pendant briefing site web)
+            _ensure_site_dev()
+            _timeout_sess = _site_dev.get_session_timeout() if _site_dev else SESSION_TIMEOUT
+            if jarvis_actif and (time.time() - dernier_message > _timeout_sess):
                 print("[JARVIS] Timeout session. Retour en veille.")
                 jarvis_actif = False
 
@@ -4149,6 +4868,32 @@ def ecouter():
                     action_pc = executer_action_pc(commande)
                     if action_pc:
                         loop.run_until_complete(parler(action_pc))
+                    elif _site_dev:
+                        _ensure_site_dev()
+                        if _site_dev.briefing_actif():
+                            handled, msg, lancer = _site_dev.traiter_reponse_briefing(commande)
+                            if handled and msg:
+                                loop.run_until_complete(parler(msg))
+                            if lancer:
+                                jarvis_actif = True
+                                prompt = _site_dev.construire_prompt_developpement()
+                                loop.run_until_complete(parler("Je démarre la création complète du site."))
+                                loop.run_until_complete(traiter_reponse_ia(prompt))
+                            continue
+                        if _site_dev.pret_a_developper() and any(
+                            m in commande.lower()
+                            for m in ("lance", "developpe", "développe", "vas-y", "vas y", "c'est bon", "cest bon", "ok")
+                        ):
+                            prompt = _site_dev.construire_prompt_developpement()
+                            loop.run_until_complete(parler("Je démarre la création complète du site."))
+                            loop.run_until_complete(traiter_reponse_ia(prompt))
+                            continue
+                        if _site_dev.detecter_demande_site(commande) and not _site_dev.briefing_actif():
+                            jarvis_actif = True
+                            msg = _site_dev.demarrer_briefing(commande)
+                            loop.run_until_complete(parler(msg))
+                            continue
+                        loop.run_until_complete(traiter_reponse_ia(commande))
                     else:
                         loop.run_until_complete(traiter_reponse_ia(commande))
                 else:
@@ -4310,7 +5055,7 @@ def start_ia():
         # Lancer le monitoring système en arrière-plan
         asyncio.create_task(broadcast_system_stats())
         
-        async with websockets.serve(ws_handler, "0.0.0.0", 8765):
+        async with websockets.serve(ws_handler, "0.0.0.0", 8765, max_size=16 * 1024 * 1024):
             await asyncio.Future()
 
     threading.Thread(target=lambda: asyncio.run(start_ws()), daemon=True).start()

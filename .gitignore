@@ -11,7 +11,12 @@ token.pickle
 jarvis_config.json
 jarvis_memoire.json
 jarvis_conversations.json
+jarvis_uploads/
+jarvis_project_knowledge.json
 jarvis_learning_base.json
+projects/
+orchid_project/
+orchid_test*/
 frontend/dist/jarvis_memoire.json
 frontend/dist/jarvis_conversations.json
 

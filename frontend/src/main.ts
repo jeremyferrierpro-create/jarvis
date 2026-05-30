@@ -39,6 +39,17 @@ const subtitleToggleButtonEl = document.getElementById("subtitle-toggle") as HTM
 const keyboardToggleButtonEl = document.getElementById("keyboard-toggle") as HTMLButtonElement;
 const keyboardHudEl = document.getElementById("keyboard-hud") as HTMLDivElement;
 const keyboardInputEl = document.getElementById("keyboard-input") as HTMLInputElement;
+const docUploadBtnEl = document.getElementById("doc-upload-btn") as HTMLButtonElement;
+const docFileInputEl = document.getElementById("doc-file-input") as HTMLInputElement;
+const docUploadPanelEl = document.getElementById("doc-upload-panel") as HTMLDivElement;
+const docDropZoneEl = document.getElementById("doc-drop-zone") as HTMLDivElement;
+const docUploadListEl = document.getElementById("doc-upload-list") as HTMLUListElement;
+const docUploadStatusEl = document.getElementById("doc-upload-status") as HTMLDivElement;
+const docContextSelectEl = document.getElementById("doc-context-select") as HTMLSelectElement;
+const docPanelCloseEl = document.getElementById("doc-panel-close") as HTMLButtonElement;
+const docScanBtnEl = document.getElementById("doc-scan-btn") as HTMLButtonElement;
+
+const MAX_DOC_BYTES = 12 * 1024 * 1024;
 
 const settingsButtonEl = document.getElementById("settings-button") as HTMLButtonElement;
 const holoButtonEl = document.getElementById("holo-button") as HTMLButtonElement;
@@ -206,6 +217,41 @@ function connect(): void {
             error: "no_stream",
           }));
         }
+        return;
+      }
+
+      if (data.type === "document_scan_result") {
+        const m = (data as { message?: string }).message || "Scan termine";
+        setDocStatus(m.slice(0, 120), "ok");
+        return;
+      }
+
+      if (data.type === "document_upload_result") {
+        const ok = (data as { ok?: boolean }).ok;
+        const fn = (data as { filename?: string }).filename || "fichier";
+        const err = (data as { error?: string }).error;
+        const resume = (data as { resume?: string }).resume;
+        if (ok) {
+          setDocStatus(`✔ ${fn} analysé`, "ok");
+          if (resume) {
+            const li = document.createElement("li");
+            li.textContent = `${fn} — ${resume.slice(0, 80)}…`;
+            docUploadListEl.prepend(li);
+          }
+        } else {
+          setDocStatus(`✕ ${err || "Erreur"}`, "err");
+        }
+        return;
+      }
+
+      if (data.type === "documents_list") {
+        const docs = (data as { documents?: { filename: string; chars: number; date: string }[] }).documents || [];
+        docUploadListEl.innerHTML = "";
+        docs.slice().reverse().forEach(d => {
+          const li = document.createElement("li");
+          li.textContent = `${d.filename} (${d.chars} car.) — ${d.date}`;
+          docUploadListEl.appendChild(li);
+        });
         return;
       }
 
@@ -491,8 +537,95 @@ keyboardInputEl.addEventListener("keydown", (e) => {
     if (val && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "user_input", text: val }));
       keyboardInputEl.value = "";
-      // Optionnel: masquer après envoi ? Non, on laisse si l'utilisateur veut continuer à taper
     }
+  }
+});
+
+function setDocStatus(msg: string, kind: "ok" | "err" | "wait" = "wait") {
+  docUploadStatusEl.textContent = msg;
+  docUploadStatusEl.className = "doc-upload-status " + kind;
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadDocumentFile(file: File) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    setDocStatus("WebSocket non connecté", "err");
+    return;
+  }
+  if (file.size > MAX_DOC_BYTES) {
+    setDocStatus(`Fichier trop gros (max 12 Mo) : ${file.name}`, "err");
+    return;
+  }
+  setDocStatus(`Analyse de ${file.name}…`, "wait");
+  try {
+    const b64 = await fileToBase64(file);
+    ws.send(JSON.stringify({
+      type: "document_upload",
+      filename: file.name,
+      data: b64,
+      context: docContextSelectEl.value || "general",
+    }));
+  } catch {
+    setDocStatus("Erreur lecture fichier", "err");
+  }
+}
+
+async function handleDocFiles(files: FileList | File[]) {
+  for (const file of Array.from(files)) {
+    await uploadDocumentFile(file);
+  }
+}
+
+docUploadBtnEl?.addEventListener("click", () => {
+  const open = docUploadPanelEl.classList.toggle("visible");
+  docUploadBtnEl.setAttribute("aria-pressed", open ? "true" : "false");
+  if (open && ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "list_documents" }));
+  }
+});
+
+docPanelCloseEl?.addEventListener("click", () => {
+  docUploadPanelEl.classList.remove("visible");
+  docUploadBtnEl.setAttribute("aria-pressed", "false");
+});
+
+docScanBtnEl?.addEventListener("click", () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  setDocStatus("Analyse cognitive en cours…", "wait");
+  ws.send(JSON.stringify({ type: "document_scan" }));
+});
+
+docDropZoneEl?.addEventListener("click", () => docFileInputEl?.click());
+
+docFileInputEl?.addEventListener("change", () => {
+  if (docFileInputEl.files?.length) {
+    void handleDocFiles(docFileInputEl.files);
+    docFileInputEl.value = "";
+  }
+});
+
+docDropZoneEl?.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  docDropZoneEl.classList.add("dragover");
+});
+
+docDropZoneEl?.addEventListener("dragleave", () => {
+  docDropZoneEl.classList.remove("dragover");
+});
+
+docDropZoneEl?.addEventListener("drop", (e) => {
+  e.preventDefault();
+  docDropZoneEl.classList.remove("dragover");
+  if (e.dataTransfer?.files?.length) {
+    void handleDocFiles(e.dataTransfer.files);
   }
 });
 

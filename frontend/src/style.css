@@ -393,10 +393,170 @@ body {
   box-shadow: 0 0 25px rgba(0, 229, 255, 0.4);
 }
 
+#doc-upload-btn {
+  position: fixed;
+  top: 18px;
+  left: 400px;
+  padding: 8px 14px;
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(0, 229, 255, 0.1);
+  color: #00e5ff;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  z-index: 500;
+  transition: all 0.25s ease;
+}
+
+#doc-upload-btn[aria-pressed="true"] {
+  background: rgba(0, 229, 255, 0.25);
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.35);
+}
+
+#doc-upload-panel {
+  display: none;
+  position: fixed;
+  top: 58px;
+  right: 18px;
+  width: min(380px, 92vw);
+  z-index: 600;
+  background: rgba(5, 5, 8, 0.92);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  border-radius: 6px;
+  padding: 16px;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 0 40px rgba(0, 229, 255, 0.15);
+  pointer-events: auto;
+}
+
+#doc-upload-panel.visible {
+  display: block;
+}
+
+.doc-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #00e5ff;
+  margin-bottom: 10px;
+}
+
+.doc-panel-close {
+  background: none;
+  border: none;
+  color: rgba(0, 229, 255, 0.6);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.doc-panel-hint {
+  font-size: 11px;
+  color: rgba(0, 229, 255, 0.55);
+  line-height: 1.4;
+  margin-bottom: 12px;
+}
+
+.doc-context-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 11px;
+  color: rgba(0, 229, 255, 0.7);
+}
+
+.doc-context-row select {
+  flex: 1;
+  background: rgba(0, 229, 255, 0.08);
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  color: #00e5ff;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-family: inherit;
+}
+
+.doc-drop-zone {
+  border: 2px dashed rgba(0, 229, 255, 0.35);
+  border-radius: 6px;
+  padding: 24px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.doc-drop-zone:hover,
+.doc-drop-zone.dragover {
+  background: rgba(0, 229, 255, 0.08);
+  border-color: #00e5ff;
+}
+
+.doc-drop-zone span {
+  display: block;
+  font-size: 12px;
+  color: #00e5ff;
+}
+
+.doc-drop-sub {
+  margin-top: 8px !important;
+  font-size: 10px !important;
+  opacity: 0.5 !important;
+}
+
+.doc-upload-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: 10px;
+  color: rgba(0, 229, 255, 0.75);
+}
+
+.doc-upload-list li {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.1);
+}
+
+.doc-upload-status {
+  margin-top: 10px;
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  color: rgba(0, 229, 255, 0.6);
+}
+
+.doc-upload-status.ok { color: #22c55e; }
+.doc-upload-status.err { color: #ef4444; }
+.doc-upload-status.wait { color: #00e5ff; }
+
+.doc-scan-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px;
+  background: rgba(0, 229, 255, 0.12);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  color: #00e5ff;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.doc-scan-btn:hover {
+  background: rgba(0, 229, 255, 0.22);
+}
+
 #settings-button {
   position: fixed;
   top: 18px;
-  left: 425px;
+  left: 500px;
   padding: 8px 14px;
   border: 1px solid rgba(0, 229, 255, 0.2);
   border-radius: 999px;

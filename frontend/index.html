@@ -228,6 +228,8 @@
   <button id="gpu-button" aria-pressed="true">GPU BOOST</button>
   <button id="subtitle-toggle" aria-pressed="true">HUD TEXT</button>
   <button id="keyboard-toggle" aria-pressed="false">CLAVIER</button>
+  <button id="doc-upload-btn" aria-pressed="false" title="Téléverser un document ou une image">📎 DOCS</button>
+  <input type="file" id="doc-file-input" multiple accept="*/*" style="display:none">
   <button id="settings-button" aria-pressed="false">⚙️ PARAMS</button>
   <button id="holo-button" aria-pressed="false">⬡ HOLO</button>
   <div id="update-banner">SYSTEM_UPDATE_AVAILABLE</div>
@@ -247,6 +249,29 @@
       <input type="text" id="keyboard-input" placeholder="ENTREZ VOTRE COMMANDE ICI..."
         style="width:100%;background:rgba(0,229,255,0.05);border:none;border-bottom:2px solid rgba(0,229,255,0.3);padding:10px;color:#00e5ff;font-family:'Courier New',monospace;font-size:16px;outline:none;letter-spacing:1px;text-transform:uppercase;">
     </div>
+  </div>
+
+  <div id="doc-upload-panel">
+    <div class="doc-panel-header">
+      <span>TÉLÉVERSEMENT DOCUMENTS</span>
+      <button type="button" id="doc-panel-close" class="doc-panel-close">✕</button>
+    </div>
+    <p class="doc-panel-hint">PDF, Word, images, cahier des charges… JARVIS analyse et l'utilise pour le briefing ou le dev web.</p>
+    <div class="doc-context-row">
+      <label>Contexte</label>
+      <select id="doc-context-select">
+        <option value="briefing">Briefing site web</option>
+        <option value="dev">Développement en cours</option>
+        <option value="general" selected>Général</option>
+      </select>
+    </div>
+    <div id="doc-drop-zone" class="doc-drop-zone">
+      <span>Glissez un fichier ici ou cliquez pour parcourir</span>
+      <span class="doc-drop-sub">Max 12 Mo — PDF, DOCX, HTML, images, maquettes…</span>
+    </div>
+    <button type="button" id="doc-scan-btn" class="doc-scan-btn">Analyser jarvis_uploads (OCR + cognition)</button>
+    <ul id="doc-upload-list" class="doc-upload-list"></ul>
+    <div id="doc-upload-status" class="doc-upload-status"></div>
   </div>
 
   <div id="subtitle-hud"

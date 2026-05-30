@@ -233,3 +233,12 @@ def chercher_fichier(nom, chemin=None):
                 resultats.append(os.path.join(root, f))
     return resultats, None
 
+def resoudre_chemin_projet(chemin="."):
+    # Si le chemin est '.', on le force vers le Bureau
+    if not chemin or chemin == ".":
+        return os.path.join(os.environ.get("USERPROFILE", ""), "Desktop")
+    
+    # Sinon, on vérifie si c'est un chemin absolu, sinon on l'ancre sur le Bureau
+    if os.path.isabs(chemin):
+        return chemin
+    return os.path.join(os.environ.get("USERPROFILE", ""), "Desktop", chemin)
