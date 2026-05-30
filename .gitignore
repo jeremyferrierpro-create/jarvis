@@ -1,0 +1,63 @@
+# --- Secrets (ne jamais committer) ---
+.env
+.env.*
+!.env.example
+credentials.json
+token.pickle
+*.pem
+*.key
+
+# --- Données utilisateur / runtime ---
+jarvis_config.json
+jarvis_memoire.json
+jarvis_conversations.json
+jarvis_learning_base.json
+frontend/dist/jarvis_memoire.json
+frontend/dist/jarvis_conversations.json
+
+# --- Python ---
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+/build/
+
+# Installateur Inno Setup (fichiers locaux)
+unins000.dat
+unins000.exe
+unins000.msg
+
+# Ne pas ignorer le build frontend (dist/ utile sans npm)
+# Le dossier Python "dist/" à la racine uniquement :
+/dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Node / frontend ---
+frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- OS / IDE ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Audio / captures temporaires ---
+jarvis_tts_*.mp3
+jarvis_vision_temp.png
+*.wav
+
+# --- Logs ---
+*.log

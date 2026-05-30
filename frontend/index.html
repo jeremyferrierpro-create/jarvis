@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>J.A.R.V.I.S</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- ══ TIMER OVERLAY — Iron Man Style ═══════════════════════════════ -->
+  <div id="timer-hud"
+    style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%, -50%);z-index:200;text-align:center;pointer-events:none;">
+    <div
+      style="font-family:'Courier New',monospace;color:#00e5ff;font-size:120px;font-weight:900;text-shadow:0 0 30px rgba(0,229,255,0.8);letter-spacing:10px;"
+      id="timer-display">00:00</div>
+    <div
+      style="font-family:'Courier New',monospace;color:rgba(0,229,255,0.5);font-size:14px;letter-spacing:5px;text-transform:uppercase;margin-top:-20px;">
+      Protocol Minuteur Actif</div>
+    <div
+      style="width:300px;height:2px;background:rgba(0,229,255,0.2);margin:20px auto;position:relative;overflow:hidden;">
+      <div id="timer-progress"
+        style="position:absolute;top:0;left:0;height:100%;width:0%;background:#00e5ff;box-shadow:0 0 10px #00e5ff;">
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ HELP OVERLAY — Iron Man Style ═══════════════════════════════ -->
+  <div id="help-overlay" style="display:none;position:fixed;inset:0;z-index:90;pointer-events:none;">
+    <!-- Widgets will be injected here by JS -->
+  </div>
+
+  <!-- ══ RECIPE MODAL — Iron Man Style ═══════════════════════════════ -->
+  <div id="recipe-modal" class="recipe-modal hidden">
+    <div class="recipe-header" id="recipe-header">
+      <div class="recipe-drag-handle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+      </div>
+      <span class="recipe-title" id="recipe-title">RECETTE J.A.R.V.I.S</span>
+      <button id="close-recipe" class="close-recipe">X</button>
+    </div>
+    <div class="recipe-content">
+      <div class="recipe-ingredients">
+        <h3>INGRÉDIENTS</h3>
+        <ul id="recipe-ingredients-list"></ul>
+      </div>
+      <div class="recipe-instructions">
+        <h3>INSTRUCTIONS</h3>
+        <ol id="recipe-instructions-list"></ol>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .help-widget {
+      position: absolute;
+      background: rgba(0, 229, 255, 0.05);
+      border-left: 2px solid #00e5ff;
+      padding: 15px 20px;
+      color: #00e5ff;
+      font-family: 'Courier New', monospace;
+      backdrop-filter: blur(5px);
+      box-shadow: 0 0 20px rgba(0, 229, 255, 0.1);
+      border-radius: 0 4px 4px 0;
+      opacity: 0;
+      transform: translateX(-20px);
+      transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      max-width: 350px;
+      padding: 22px 30px;
+      color: #00e5ff;
+      font-family: 'Courier New', monospace;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 0 30px rgba(0, 229, 255, 0.2), inset 0 0 10px rgba(0, 229, 255, 0.1);
+      border-radius: 4px;
+      opacity: 0;
+      transform: scale(0.8) translateY(20px);
+      transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+      pointer-events: auto;
+    }
+
+    .help-widget.right {
+      border-left: none;
+      border-right: 4px solid #00e5ff;
+    }
+
+    .help-widget.visible {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+
+    .help-widget-title {
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 3px;
+      opacity: 0.8;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      border-bottom: 1px solid rgba(0, 229, 255, 0.2);
+      padding-bottom: 5px;
+    }
+
+    .help-widget-cmd {
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+    }
+
+    @keyframes float {
+
+      0%,
+      100% {
+        transform: translateY(0px);
+      }
+
+      50% {
+        transform: translateY(-10px);
+      }
+    }
+  </style>
+
+  <script type="module" src="/src/main.ts"></script>
+  <!-- MediaPipe — chargé globalement pour le mode hologramme -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js" crossorigin="anonymous"></script>
+</head>
+
+<body>
+  <!-- ══════════════════════════════════════════════════════════════════════
+       BOOT OVERLAY — Iron Man Initialization Sequence
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div id="boot-overlay">
+    <!-- Corner brackets -->
+    <div class="boot-corner boot-tl"></div>
+    <div class="boot-corner boot-tr"></div>
+    <div class="boot-corner boot-bl"></div>
+    <div class="boot-corner boot-br"></div>
+
+    <!-- Logo -->
+    <div id="boot-logo-section">
+      <div id="boot-logo-ring">
+        <div id="boot-ring-inner"></div>
+      </div>
+      <div id="boot-logo-text">J.A.R.V.I.S</div>
+      <div id="boot-logo-sub">JUST A RATHER VERY INTELLIGENT SYSTEM</div>
+      <div id="boot-logo-version">CORE v5.5 &nbsp;·&nbsp; BUILD TECHENCLAIR &nbsp;·&nbsp; <span id="boot-build-year"></span></div>
+    </div>
+
+    <!-- Separator -->
+    <div id="boot-separator">
+      <div class="boot-sep-line"></div>
+      <span class="boot-sep-label">◈ INITIALISATION DES PROTOCOLES ◈</span>
+      <div class="boot-sep-line"></div>
+    </div>
+
+    <!-- Module checklist -->
+    <div id="boot-modules"></div>
+
+    <!-- Progress bar -->
+    <div id="boot-progress-wrap">
+      <div id="boot-progress-track">
+        <div id="boot-progress-bar">
+          <div id="boot-progress-glow"></div>
+        </div>
+      </div>
+      <div id="boot-progress-label">CHARGEMENT... 0%</div>
+    </div>
+
+    <!-- Final ready message -->
+    <div id="boot-final-text">◈ &nbsp; TOUS SYSTÈMES OPÉRATIONNELS &nbsp; ◈</div>
+
+    <!-- Bottom status bar -->
+    <div id="boot-statusbar">
+      <span id="boot-status-text">DÉMARRAGE EN COURS...</span>
+      <span id="boot-statusbar-right">www.techenclair.fr</span>
+    </div>
+  </div>
+
+  <canvas id="orb-canvas"></canvas>
+
+  <!-- ══ ORB CLOCK HUD — Iron Man Style ══════════════════════════════════ -->
+  <div id="orb-clock-hud">
+    <div class="hud-corner hud-tl"></div>
+    <div class="hud-corner hud-tr"></div>
+    <div class="hud-corner hud-bl"></div>
+    <div class="hud-corner hud-br"></div>
+    <div class="hud-prefix">◈ LOCAL_TIME</div>
+    <div style="display: flex; align-items: center; justify-content: center; gap: 25px;">
+      <div id="cpu-hud" class="stat-hud">
+        <span class="stat-label">CPU</span>
+        <span id="cpu-value" class="stat-value">--%</span>
+      </div>
+      <div id="orb-time-display">--:--:--</div>
+      <div id="ram-hud" class="stat-hud">
+        <span class="stat-label">RAM</span>
+        <span id="ram-value" class="stat-value">--%</span>
+      </div>
+    </div>
+    <div class="hud-labels">
+      <span class="hud-lbl">SYS_CLOCK</span>
+      <span id="orb-date-display">--/--/----</span>
+      <span class="hud-lbl">ONLINE</span>
+    </div>
+  </div>
+
+  <!-- ══ BOUTON MIC ═══════════════════════════════════════════ -->
+  <button id="mic-btn" aria-label="Activer le microphone" title="Cliquez pour parler à JARVIS">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/>
+      <path d="M5 11a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+      <line x1="12" y1="18" x2="12" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <line x1="9" y1="22" x2="15" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  </button>
+
+  <div id="status-text"></div>
+  <div id="user-tip"
+    style="position:fixed;top:60px;left:20px;z-index:80;color:rgba(0,229,255,0.8);font-family:'Courier New',monospace;font-size:14px;font-weight:bold;letter-spacing:1px;pointer-events:none;background:rgba(0,229,255,0.1);padding:10px 20px;border-left:3px solid #00e5ff;border-radius:0 4px 4px 0;box-shadow:0 0 15px rgba(0,229,255,0.2);text-transform:uppercase;transition:opacity 1s ease-in-out;">
+    Demandez : "Jarvis, que peux-tu faire ?"
+  </div>
+  <div id="error-text"></div>
+  <div id="connection-badge" class="disconnected">
+    <div id="connection-dot"></div>
+    <span id="connection-label">reconnexion</span>
+  </div>
+  <button id="fullscreen-btn" title="Plein écran">&#x26F6;</button>
+  <button id="mute-button" aria-label="Stopper JARVIS" title="Cliquez pour stopper JARVIS" aria-pressed="false"></button>
+  <button id="gpu-button" aria-pressed="true">GPU BOOST</button>
+  <button id="subtitle-toggle" aria-pressed="true">HUD TEXT</button>
+  <button id="keyboard-toggle" aria-pressed="false">CLAVIER</button>
+  <button id="settings-button" aria-pressed="false">⚙️ PARAMS</button>
+  <button id="holo-button" aria-pressed="false">⬡ HOLO</button>
+  <div id="update-banner">SYSTEM_UPDATE_AVAILABLE</div>
+
+  <div id="assistant-label">J.A.R.V.I.S <span style="font-size:10px;opacity:0.5;margin-left:10px;font-weight:normal;">by
+      www.techenclair.fr</span></div>
+
+  <div id="keyboard-hud"
+    style="display:none;position:fixed;bottom:220px;left:50%;transform:translateX(-50%);z-index:200;width:85%;max-width:600px;pointer-events:auto;">
+    <div
+      style="background:rgba(5,5,8,0.85);border:1px solid #00e5ff;padding:15px;backdrop-filter:blur(15px);border-radius:4px;box-shadow:0 0 30px rgba(0,229,255,0.2);">
+      <div
+        style="display:flex;justify-content:space-between;margin-bottom:10px;font-family:'Courier New',monospace;color:#00e5ff;font-size:10px;letter-spacing:2px;text-transform:uppercase;">
+        <span>DIRECT_INPUT_OVERRIDE</span>
+        <span>AWAITING_COMMAND...</span>
+      </div>
+      <input type="text" id="keyboard-input" placeholder="ENTREZ VOTRE COMMANDE ICI..."
+        style="width:100%;background:rgba(0,229,255,0.05);border:none;border-bottom:2px solid rgba(0,229,255,0.3);padding:10px;color:#00e5ff;font-family:'Courier New',monospace;font-size:16px;outline:none;letter-spacing:1px;text-transform:uppercase;">
+    </div>
+  </div>
+
+  <div id="subtitle-hud"
+    style="display:none;position:fixed;bottom:100px;left:50%;transform:translateX(-50%);z-index:150;text-align:center;pointer-events:none;width:85%;max-width:900px;">
+    <div id="subtitle-box"
+      style="background:rgba(0,229,255,0.03);border-top:1px solid rgba(0,229,255,0.15);border-bottom:1px solid rgba(0,229,255,0.15);padding:20px;backdrop-filter:blur(10px);position:relative;overflow:hidden;border-radius:4px;box-shadow:0 0 30px rgba(0,0,0,0.5);">
+      <div
+        style="position:absolute;top:0;left:0;width:100%;height:100%;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.02) 2px,rgba(0,229,255,0.02) 4px);pointer-events:none;">
+      </div>
+      <div style="position:absolute;top:0;left:0;width:30px;height:2px;background:#00e5ff;"></div>
+      <div style="position:absolute;top:0;right:0;width:30px;height:2px;background:#00e5ff;"></div>
+      <div style="position:absolute;bottom:0;left:0;width:30px;height:2px;background:#00e5ff;"></div>
+      <div style="position:absolute;bottom:0;right:0;width:30px;height:2px;background:#00e5ff;"></div>
+      <div id="subtitle-text"
+        style="font-family:'Courier New',monospace;color:#00e5ff;font-size:18px;font-weight:bold;text-shadow:0 0 10px rgba(0,229,255,0.5);letter-spacing:1px;line-height:1.4;text-transform:uppercase;display:inline;">
+      </div>
+      <div id="subtitle-cursor"
+        style="display:inline-block;width:10px;height:20px;background:#00e5ff;vertical-align:middle;margin-left:5px;animation:blink 0.8s infinite;">
+      </div>
+    </div>
+    <div
+      style="display:flex;justify-content:space-between;margin-top:8px;font-family:'Courier New',monospace;color:rgba(0,229,255,0.4);font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:0 10px;">
+      <span>SYNC_TERMINAL_V2.5</span>
+      <span id="subtitle-meta">DECRYPTING_RESPONSE...</span>
+    </div>
+  </div>
+
+  <!-- ══ TEMP PANEL — Iron Man HUD (left side) ═══════════════════════ -->
+  <div id="temp-panel">
+    <div class="tp-scanlines"></div>
+    <div class="tp-corner tp-tl"></div>
+    <div class="tp-corner tp-tr"></div>
+    <div class="tp-corner tp-bl"></div>
+    <div class="tp-corner tp-br"></div>
+
+    <div class="tp-header">
+      <span class="tp-label">THERMAL_SCAN // HOME</span>
+      <span class="tp-close" id="tp-close-btn">✕</span>
+    </div>
+
+    <div class="tp-piece" id="tp-piece">---</div>
+
+    <div class="tp-temp-block">
+      <span class="tp-temp-main" id="tp-temp">--</span>
+      <span class="tp-temp-unit">°C</span>
+    </div>
+
+    <div class="tp-hum-row" id="tp-hum-row" style="display:none;">
+      <span class="tp-hum-label">HUMIDITÉ</span>
+      <span class="tp-hum-value" id="tp-hum">--</span>
+      <span class="tp-hum-label">%</span>
+    </div>
+
+    <div class="tp-bar-group">
+      <div class="tp-bar-label">CONFORT THERMIQUE</div>
+      <div class="tp-comfort-bar">
+        <div class="tp-comfort-fill" id="tp-comfort"></div>
+        <div class="tp-comfort-marker" id="tp-marker"></div>
+      </div>
+      <div class="tp-comfort-scale">
+        <span>10°</span><span>16°</span><span>20°</span><span>24°</span><span>30°</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ WEATHER PANEL — Iron Man HUD ════════════════════════════════ -->
+  <div id="weather-panel">
+    <div class="wp-scanlines"></div>
+    <div class="wp-corner wp-tl"></div>
+    <div class="wp-corner wp-tr"></div>
+    <div class="wp-corner wp-bl"></div>
+    <div class="wp-corner wp-br"></div>
+
+    <div class="wp-header">
+      <span class="wp-label">ATMOSPHERIC_SCAN</span>
+      <span class="wp-close" id="wp-close-btn">✕</span>
+    </div>
+
+    <div class="wp-city" id="wp-city">---</div>
+
+    <div class="wp-temp-block">
+      <span class="wp-temp-main" id="wp-temp">--</span>
+      <span class="wp-temp-unit">°C</span>
+    </div>
+    <div class="wp-desc" id="wp-desc">ACQUIRING...</div>
+
+    <div class="wp-grid">
+      <div class="wp-stat">
+        <div class="wp-stat-label">RESSENTI</div>
+        <div class="wp-stat-value"><span id="wp-feels">--</span>°C</div>
+      </div>
+      <div class="wp-stat">
+        <div class="wp-stat-label">HUMIDITÉ</div>
+        <div class="wp-stat-value"><span id="wp-humidity">--</span>%</div>
+      </div>
+      <div class="wp-stat">
+        <div class="wp-stat-label">VENT</div>
+        <div class="wp-stat-value"><span id="wp-wind">--</span> km/h</div>
+      </div>
+      <div class="wp-stat">
+        <div class="wp-stat-label">ÉTAT</div>
+        <div class="wp-stat-value wp-icon" id="wp-icon">--</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ JARVIS GLOBE — Canvas 2D pur (aucune dépendance) ════════════ -->
+  <div id="globe-overlay"
+    style="display:none;position:fixed;inset:0;z-index:100;background:#000;opacity:0;flex-direction:column;transition:opacity 0.8s ease-in-out;">
+    <canvas id="globe-canvas"
+      style="position:absolute;inset:0;width:100%;height:100%;cursor:grab;display:block;"></canvas>
+
+    <!-- Detailed Map Layer -->
+    <div id="map-overlay"
+      style="display:none;position:absolute;inset:0;z-index:150;background:#000;opacity:0;transition:opacity 1s ease-in-out;">
+      <div id="map" style="width:100%;height:100%;"></div>
+      <button id="map-back"
+        style="position:absolute;bottom:30px;left:50%;transform:translateX(-50%);z-index:160;background:rgba(0,229,255,.2);border:1px solid #00e5ff;color:#00e5ff;font-family:'Courier New',monospace;font-size:12px;letter-spacing:2px;padding:10px 25px;border-radius:4px;cursor:pointer;backdrop-filter:blur(5px);box-shadow:0 0 15px rgba(0,229,255,.3);">✕
+        RETOUR À L'ESPACE</button>
+    </div>
+
+    <div
+      style="position:absolute;top:14px;left:20px;z-index:20;color:rgba(0,229,255,.7);font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;pointer-events:none;line-height:1.8;">
+      <div style="font-size:20px;font-weight:bold;letter-spacing:5px;margin-bottom:5px;">J.A.R.V.I.S</div>
+      <div style="font-size:10px;letter-spacing:3px;opacity:0.7;margin-bottom:10px;">SYSTÈME DE NAVIGATION</div>
+      <div style="font-size:9px;letter-spacing:1px;opacity:0.5;">by www.techenclair.fr</div>
+      <div style="font-size:9px;letter-spacing:1px;opacity:0.5;">TIKTOK : TECHENCLAIR</div>
+    </div>
+    <div
+      style="position:absolute;top:14px;right:20px;text-align:right;z-index:20;color:rgba(0,229,255,.7);font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;pointer-events:none;line-height:1.8;">
+      <div id="globe-clock">--:--:--</div>
+      <div style="font-size:9px;opacity:.5">UTC</div>
+    </div>
+    <div
+      style="position:absolute;bottom:24px;left:50%;transform:translateX(-50%);text-align:center;z-index:20;pointer-events:none;">
+      <div id="globe-target-label"
+        style="color:rgba(0,229,255,.9);font-family:'Courier New',monospace;font-size:13px;letter-spacing:3px;text-transform:uppercase;text-shadow:0 0 10px rgba(0,229,255,.6);margin-bottom:4px;">
+        GLOBE TERRESTRE</div>
+      <div id="globe-coords"
+        style="color:rgba(0,229,255,.5);font-family:'Courier New',monospace;font-size:10px;letter-spacing:2px;"></div>
+    </div>
+    <div
+      style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,229,255,.012) 3px,rgba(0,229,255,.012) 4px);pointer-events:none;z-index:5;">
+    </div>
+    <div
+      style="position:absolute;top:8px;left:8px;width:20px;height:20px;border-top:2px solid #00e5ff;border-left:2px solid #00e5ff;opacity:.5;pointer-events:none;z-index:20;">
+    </div>
+    <div
+      style="position:absolute;top:8px;right:8px;width:20px;height:20px;border-top:2px solid #00e5ff;border-right:2px solid #00e5ff;opacity:.5;pointer-events:none;z-index:20;">
+    </div>
+    <div
+      style="position:absolute;bottom:8px;left:8px;width:20px;height:20px;border-bottom:2px solid #00e5ff;border-left:2px solid #00e5ff;opacity:.5;pointer-events:none;z-index:20;">
+    </div>
+    <div
+      style="position:absolute;bottom:8px;right:8px;width:20px;height:20px;border-bottom:2px solid #00e5ff;border-right:2px solid #00e5ff;opacity:.5;pointer-events:none;z-index:20;">
+    </div>
+    <button id="globe-close"
+      style="position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:30;background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.35);color:rgba(0,229,255,.75);font-family:'Courier New',monospace;font-size:10px;letter-spacing:2px;padding:5px 18px;border-radius:2px;cursor:pointer;">✕
+      FERMER</button>
+  </div>
+
+  <script>
+    // The globe logic is now handled in src/globe.ts via Vite
+    document.getElementById('globe-close').addEventListener('click', () => {
+      if (window.jarvisGlobe) window.jarvisGlobe({ globe_action: 'hide' });
+    });
+
+    // Transition to detailed map
+    let leafletMap = null;
+
+    window.showDetailedMap = (lat, lon) => {
+      const mapOverlay = document.getElementById('map-overlay');
+
+      mapOverlay.style.display = 'block';
+      setTimeout(() => {
+        mapOverlay.style.opacity = '1';
+
+        if (!leafletMap) {
+          leafletMap = L.map('map', {
+            center: [lat, lon],
+            zoom: 5, // Continental view (like image 3)
+            zoomControl: false
+          });
+
+          // Google Satellite Tiles (More reliable)
+          L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+            attribution: '&copy; Google'
+          }).addTo(leafletMap);
+        } else {
+          if (!isNaN(lat) && !isNaN(lon)) {
+            leafletMap.setView([lat, lon], 5);
+          }
+        }
+
+        // Force resize after transition
+        setTimeout(() => leafletMap.invalidateSize(), 400);
+      }, 50);
+    };
+
+    document.getElementById('map-back').addEventListener('click', () => {
+      const mapOverlay = document.getElementById('map-overlay');
+      mapOverlay.style.opacity = '0';
+      setTimeout(() => {
+        mapOverlay.style.display = 'none';
+        if (window.resetGlobeTransition) window.resetGlobeTransition();
+      }, 1000);
+    });
+  </script>
+
+  <!-- ══ HOLOGRAMME OVERLAY ════════════════════════════════════════════════ -->
+  <div id="holo-overlay" style="display:none;">
+    <!-- Corner brackets -->
+    <div class="holo-corner holo-corner-tl"></div>
+    <div class="holo-corner holo-corner-tr"></div>
+    <div class="holo-corner holo-corner-bl"></div>
+    <div class="holo-corner holo-corner-br"></div>
+
+    <!-- Webcam (caché, utilisé par MediaPipe) -->
+    <video id="holo-webcam" autoplay muted playsinline></video>
+
+    <!-- Canvases empilés -->
+    <canvas id="holo-starfield"></canvas>
+    <canvas id="holo-three-canvas"></canvas>
+    <canvas id="holo-game-canvas"></canvas>
+    <canvas id="holo-hand-canvas"></canvas>
+
+    <!-- Bouton retour accueil -->
+    <button id="holo-close-btn">⌂ RETOUR JARVIS</button>
+
+    <!-- Toast geste -->
+    <div id="holo-gesture-toast"></div>
+
+    <!-- HUD Haut-Gauche -->
+    <div class="holo-hud-corner holo-hud-tl">
+      <div class="holo-hud-block">
+        <div class="holo-hud-line"><span class="holo-key">FPS</span><span id="holo-hud-fps">--</span></div>
+        <div class="holo-hud-line"><span class="holo-key">HANDS</span><span id="holo-hud-hands">0</span></div>
+        <div class="holo-hud-line"><span class="holo-key">SHAPES</span><span id="holo-hud-shapes">0</span></div>
+        <div class="holo-hud-line holo-muted"><span class="holo-key">GESTURE</span><span id="holo-hud-gesture">--</span></div>
+      </div>
+    </div>
+
+    <!-- HUD Haut-Droite -->
+    <div class="holo-hud-corner holo-hud-tr">
+      <div class="holo-hud-block" style="text-align:right">
+        <div class="holo-hud-title">J.A.R.V.I.S · HOLO MODE</div>
+        <div class="holo-hud-line holo-muted" style="justify-content:flex-end;" id="holo-hud-date">--</div>
+      </div>
+    </div>
+
+    <!-- HUD Bas-Gauche — barres d'énergie -->
+    <div class="holo-hud-corner holo-hud-bl">
+      <div class="holo-hud-bars">
+        <div class="holo-bar-row"><span class="holo-key">ENERGY</span><div class="holo-bar"><div class="holo-bar-fill holo-cyan" id="holo-bar-energy" style="width:70%"></div></div></div>
+        <div class="holo-bar-row"><span class="holo-key">FLUX</span><div class="holo-bar"><div class="holo-bar-fill holo-orange" id="holo-bar-flux" style="width:50%"></div></div></div>
+        <div class="holo-bar-row"><span class="holo-key">LINK</span><div class="holo-bar"><div class="holo-bar-fill holo-red" id="holo-bar-link" style="width:30%"></div></div></div>
+      </div>
+    </div>
+
+    <!-- Dock — boutons de formes (touches 1-9) -->
+    <div id="holo-dock">
+      <button class="holo-dock-btn" data-shape="sphere" title="Sphère [1]">⬤</button>
+      <button class="holo-dock-btn" data-shape="cube" title="Cube [2]">■</button>
+      <button class="holo-dock-btn" data-shape="pyramid" title="Pyramide [3]">▲</button>
+      <button class="holo-dock-btn" data-shape="torus" title="Tore [7]">◎</button>
+      <button class="holo-dock-btn" data-shape="dna" title="DNA Knot [8]">⬡</button>
+      <button class="holo-dock-btn" data-shape="octa" title="Octaèdre [6]">✦</button>
+      <button class="holo-dock-btn holo-dock-sep" id="holo-btn-game" title="Jeu balle — utilise ta main pour faire rebondir la balle">● JEU</button>
+      <button class="holo-dock-btn holo-dock-sep active" id="holo-btn-mirror" title="Inverser les mains">⇄ MIROIR</button>
+      <button class="holo-dock-btn holo-dock-sep" id="holo-btn-clear" title="Effacer tout [Suppr]">CLR</button>
+      <button class="holo-dock-btn holo-dock-sep" id="holo-btn-fullscreen" title="Plein écran">⛶</button>
+    </div>
+  </div>
+
+  <!-- ══ SETTINGS MODAL ══════════════════════════════════ -->
+  <div id="settings-modal">
+    <div class="settings-container">
+      <div class="settings-header">
+        <span>CONFIGURATION PROFIL</span>
+        <span class="settings-close" id="settings-close-btn">[ X ]</span>
+      </div>
+
+      <div class="settings-group">
+        <label for="settings-mic">MICROPHONE</label>
+        <select id="settings-mic">
+          <option value="">-- Détection automatique --</option>
+        </select>
+      </div>
+
+      <div class="settings-group">
+        <label for="settings-name">PRÉNOM</label>
+        <input type="text" id="settings-name" placeholder="Ex: Mickael">
+      </div>
+
+      <div class="settings-group">
+        <label for="settings-age">ÂGE</label>
+        <input type="number" id="settings-age" placeholder="Ex: 37">
+      </div>
+
+      <div class="settings-group" style="margin-top: 30px;">
+        <label>APPLICATIONS PERSONNALISÉES (Voice Launch)</label>
+        <div class="settings-apps-list" id="settings-apps-list">
+          <!-- Apps dynamiques -->
+        </div>
+
+        <div class="settings-app-form">
+          <input type="text" id="app-add-name" placeholder="Nom (Ex: Bloc Note)">
+          <input type="text" id="app-add-path" placeholder="Chemin (Ex: C:\Windows\notepad.exe)">
+          <button class="settings-btn" id="app-add-btn">AJOUTER</button>
+        </div>
+      </div>
+
+      <!-- ══ HOME ASSISTANT ENTITIES ═══════════════════════════ -->
+      <div class="settings-group" style="margin-top: 30px;">
+        <label>APPAREILS HOME ASSISTANT</label>
+        <div class="ha-tabs">
+          <button class="ha-tab-btn active" data-tab="lumieres">&#9728; Lumières</button>
+          <button class="ha-tab-btn" data-tab="prises">&#9889; Prises</button>
+          <button class="ha-tab-btn" data-tab="capteurs">&#127777; Capteurs</button>
+        </div>
+        <div class="settings-apps-list" id="ha-entities-list">
+          <!-- Entités dynamiques -->
+        </div>
+        <div class="settings-app-form">
+          <input type="text" id="ha-add-nom" placeholder="Nom vocal (ex: escalier)">
+          <input type="text" id="ha-add-entity" placeholder="entity_id (ex: light.escalier)">
+          <button class="settings-btn" id="ha-add-btn">AJOUTER</button>
+        </div>
+        <div class="ha-hint">Dites : "Jarvis, allume la lumière de l'<em>escalier</em>"</div>
+      </div>
+
+      <!-- ══ LIEN MUSIQUE ═════════════════════════════════════ -->
+      <div class="settings-group" style="margin-top: 30px;">
+        <label for="settings-musique-lien">&#127925; LIEN MUSIQUE PERSONNALISÉ</label>
+        <input type="url" id="settings-musique-lien" placeholder="Ex: https://open.spotify.com/playlist/... ou https://www.youtube.com/...">
+        <div class="ha-hint">Dites "<em>Jarvis, mets de la musique</em>" — Spotify, YouTube, Deezer, Apple Music, ou tout autre lien.</div>
+      </div>
+
+      <button class="settings-btn primary" id="settings-save-btn">SAUVEGARDER & APPLIQUER</button>
+
+      <!-- ══ LIENS ══════════════════════════════════════════════ -->
+      <div class="settings-links">
+        <a class="settings-link-btn" href="https://www.techenclair.fr/" target="_blank">&#127760; Site Web</a>
+        <a class="settings-link-btn paypal" href="https://www.paypal.com/paypalme/TechEnClair?country.x=FR&locale.x=fr_FR" target="_blank">&#10084; Soutenir</a>
+        <a class="settings-link-btn discord" href="https://discord.gg/TGpxArpNcE" target="_blank">&#128172; Discord</a>
+        <a class="settings-link-btn tiktok" href="https://www.tiktok.com/@techenclair" target="_blank">&#9654; TikTok</a>
+      </div>
+    </div>
+  </div>
+
+</body>
+
+</html>

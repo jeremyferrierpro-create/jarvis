@@ -1,0 +1,12 @@
+{
+    "user_name": "VotrePrenom",
+    "user_age": "",
+    "custom_apps": [],
+    "mic_device_index": null,
+    "ha_custom_entities": {
+        "lumieres": [],
+        "prises": [],
+        "capteurs": []
+    },
+    "musique_lien": ""
+}
