@@ -1,0 +1,79 @@
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║                             AUDIT COMPLET JARVIS                             ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+📊 STATISTIQUES GÉNÉRALES
+────────────────────────────────────────────────────────────────────────────────
+  Fichiers Python        : 28
+  Taille totale          : 607.6 KB
+  Modules connectés      : 28
+  Modules non utilisés   : 15
+  Fichiers ignorés       : 19
+
+✓ MODULES CONNECTÉS (utilisés par main2.py)
+────────────────────────────────────────────────────────────────────────────────
+  ✓ app_launcher.py                          (  22.9 KB)
+  ✓ asyncio.py                               (   0.0 KB)
+  ✓ ctypes.py                                (   0.0 KB)
+  ✓ datetime.py                              (   0.0 KB)
+  ✓ deezer_controller.py                     (   3.3 KB)
+  ✓ dotenv.py                                (   0.0 KB)
+  ✓ file_manager.py                          (   9.9 KB)
+  ✓ glob.py                                  (   0.0 KB)
+  ✓ google.py                                (   0.0 KB)
+  ✓ google_auth_oauthlib.py                  (   0.0 KB)
+  ✓ google_services.py                       (   6.2 KB)
+  ✓ googleapiclient.py                       (   0.0 KB)
+  ✓ ha_config.py                             (  22.8 KB)
+  ✓ json.py                                  (   0.0 KB)
+  ✓ memory_manager.py                        (   3.4 KB)
+  ✓ os.py                                    (   0.0 KB)
+  ✓ pathlib.py                               (   0.0 KB)
+  ✓ pickle.py                                (   0.0 KB)
+  ✓ pyperclip.py                             (   0.0 KB)
+  ✓ re.py                                    (   0.0 KB)
+  ✓ requests.py                              (   0.0 KB)
+  ✓ shutil.py                                (   0.0 KB)
+  ✓ sports_web.py                            (   7.2 KB)
+  ✓ spotify_controller.py                    (   5.9 KB)
+  ✓ subprocess.py                            (   0.0 KB)
+  ✓ time.py                                  (   0.0 KB)
+  ✓ vision_module.py                         (   8.7 KB)
+  ✓ webbrowser.py                            (   0.0 KB)
+
+⚠️  MODULES NON CONNECTÉS (débranché)
+────────────────────────────────────────────────────────────────────────────────
+
+  [Modules détachés]
+    • document_cognition.py               (   9.4 KB)
+    • document_ingest.py                  (  12.8 KB)
+    • jarvis_audit.py                     (  12.3 KB)
+    • jarvis_auto_learning.py             (  13.8 KB)
+    • jarvis_capabilities.py              (  22.6 KB)
+    • jarvis_diagnostic.py                (   3.2 KB)
+    • jarvis_human.py                     (  21.2 KB)
+    • jarvis_mode_detector.py             (  14.1 KB)
+    • jarvis_relations.py                 (  31.0 KB)
+    • jarvis_voice_commands.py            (  14.9 KB)
+    • knowledge_engine.py                 (  12.9 KB)
+    • pc_actions.py                       (  17.7 KB)
+    • site_dev_agent.py                   (  26.0 KB)
+    • web_dev_engine.py                   (  19.9 KB)
+
+  [Privé]
+    • _setup\rename_user.py               (   1.1 KB)
+
+⚙️  CONFIGURATION
+────────────────────────────────────────────────────────────────────────────────
+  ✓ Configuration OK
+
+💡 RECOMMANDATIONS
+────────────────────────────────────────────────────────────────────────────────
+  ✓ Aucune recommandation majeure
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                FIN DE L'AUDIT                                ║
+╚══════════════════════════════════════════════════════════════════════════════╝

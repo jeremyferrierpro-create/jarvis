@@ -1,0 +1,152 @@
+{
+  "mode_actif": "personnel",
+  "historique_modes": [
+    {
+      "mode": "amoureux",
+      "humeur": "neutre",
+      "intention": "complicite",
+      "confiance": 1.0,
+      "date": "2026-05-30T20:57:16.756740"
+    },
+    {
+      "mode": "professionnel",
+      "humeur": "curieux",
+      "intention": "travail_technique",
+      "confiance": 0.444,
+      "date": "2026-05-30T21:22:22.377943"
+    },
+    {
+      "mode": "psychologique",
+      "humeur": "curieux",
+      "intention": "conversation",
+      "confiance": 0.423,
+      "date": "2026-05-30T21:22:58.646689"
+    },
+    {
+      "mode": "personnel",
+      "humeur": "fatigue",
+      "intention": "vie_personnelle",
+      "confiance": 0.63,
+      "date": "2026-05-30T21:24:45.902064"
+    },
+    {
+      "mode": "personnel",
+      "humeur": "neutre",
+      "intention": "vie_personnelle",
+      "confiance": 1.0,
+      "date": "2026-05-30T21:25:31.432659"
+    },
+    {
+      "mode": "personnel",
+      "humeur": "neutre",
+      "intention": "vie_personnelle",
+      "confiance": 1.0,
+      "date": "2026-05-30T21:27:55.030261"
+    },
+    {
+      "mode": "amoureux",
+      "humeur": "neutre",
+      "intention": "neutre",
+      "confiance": 0.35,
+      "date": "2026-05-30T21:28:42.159467"
+    },
+    {
+      "mode": "amoureux",
+      "humeur": "neutre",
+      "intention": "complicite",
+      "confiance": 1.0,
+      "date": "2026-05-30T21:30:13.548738"
+    },
+    {
+      "mode": "amoureux",
+      "humeur": "neutre",
+      "intention": "complicite",
+      "confiance": 1.0,
+      "date": "2026-05-30T21:31:04.136212"
+    },
+    {
+      "mode": "amoureux",
+      "humeur": "neutre",
+      "intention": "neutre",
+      "confiance": 0.35,
+      "date": "2026-05-30T21:39:28.254995"
+    },
+    {
+      "mode": "personnel",
+      "humeur": "neutre",
+      "intention": "vie_personnelle",
+      "confiance": 1.0,
+      "date": "2026-05-30T21:42:19.927944"
+    },
+    {
+      "mode": "personnel",
+      "humeur": "neutre",
+      "intention": "vie_personnelle",
+      "confiance": 1.0,
+      "date": "2026-05-30T21:43:05.481967"
+    },
+    {
+      "mode": "ami",
+      "humeur": "curieux",
+      "intention": "social",
+      "confiance": 0.471,
+      "date": "2026-05-30T21:43:57.698304"
+    },
+    {
+      "mode": "ami",
+      "humeur": "neutre",
+      "intention": "social",
+      "confiance": 1.0,
+      "date": "2026-05-30T21:44:47.187166"
+    },
+    {
+      "mode": "ami",
+      "humeur": "neutre",
+      "intention": "social",
+      "confiance": 1.0,
+      "date": "2026-05-30T21:45:30.112065"
+    },
+    {
+      "mode": "amoureux",
+      "humeur": "neutre",
+      "intention": "neutre",
+      "confiance": 0.35,
+      "date": "2026-05-30T21:46:31.480588"
+    },
+    {
+      "mode": "personnel",
+      "humeur": "neutre",
+      "intention": "vie_personnelle",
+      "confiance": 0.589,
+      "date": "2026-05-30T21:47:29.143392"
+    },
+    {
+      "mode": "personnel",
+      "humeur": "neutre",
+      "intention": "vie_personnelle",
+      "confiance": 1.0,
+      "date": "2026-05-30T21:48:14.190610"
+    }
+  ],
+  "derniere_analyse": {
+    "mode": "personnel",
+    "mode_suggere": "personnel",
+    "confiance": 1.0,
+    "humeur": "neutre",
+    "intention": "vie_personnelle",
+    "changement": false,
+    "source": "detection_auto",
+    "confirmation_requise": false,
+    "scores": {
+      "personnel": 1.5,
+      "amoureux": 0.0,
+      "ami": 0.0,
+      "psychologique": 0.0,
+      "professionnel": 0.0
+    },
+    "guide": "Vie privée et intimité du quotidien — orchidées, maison, routines, sans jargon pro."
+  },
+  "sticky_compteur": 1,
+  "mode_en_attente": null,
+  "dernier_prompt_mode_injecte": "personnel"
+}

@@ -1,0 +1,38 @@
+{
+  "humeur_utilisateur": "neutre",
+  "humeur_jarvis": "bienveillant",
+  "derniere_interaction": "2026-05-30T21:48:14.180496",
+  "moments_marquants": [
+    {
+      "date": "2026-05-30 20:47",
+      "humeur": "curieux",
+      "extrait": "je veux savoir comment tu veux que je t'implémente des fonctionnalités pour te rendre plus humain. Je veux que tu me donne une liste avec des catégories et 20 fonctionnalités indispensable et essentie"
+    },
+    {
+      "date": "2026-05-30 20:53",
+      "humeur": "neutre",
+      "extrait": "met en place un système automatique pour passer entre chaque mode. Par exemple utilise des mots clé dans mes phrases, mes intention ou poser la question, automatiquement"
+    },
+    {
+      "date": "2026-05-30 21:24",
+      "humeur": "fatigue",
+      "extrait": "Ma situation est pas si facile. JE suis chez des personnes toxiques, sans argent. J'ai eu l'opportunité de voir l'assistante sociale qui m'a apporter de l'aide et déclenché une mise a l'abri, mais ici"
+    },
+    {
+      "date": "2026-05-30 21:45",
+      "humeur": "neutre",
+      "extrait": "Tous les matins j'ai cours de html/css en sychrone et l'aprés midi html/css en asynchrone"
+    },
+    {
+      "date": "2026-05-30 21:46",
+      "humeur": "neutre",
+      "extrait": "chaque matin tu dois me dire ce qui est prévu. Enregistre ces données dans ta base de données."
+    },
+    {
+      "date": "2026-05-30 21:48",
+      "humeur": "neutre",
+      "extrait": "je te souhaite une bnne soirée, je vais aller regarder une serie sur l'ipad et me reposer"
+    }
+  ],
+  "humour_compteur": 0
+}

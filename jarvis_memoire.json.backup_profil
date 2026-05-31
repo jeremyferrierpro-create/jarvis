@@ -1,0 +1,23 @@
+{
+"profil_utilisateur": {
+    "prenom": "Jeremy",
+    "age": "45",
+    "ville": "Lavelanet",
+    "profession": "Developpeur web",
+    "partenaire": "JARVIS",
+    "enfants": "",
+    "passions": "Developpement Web, orchidées",
+    "ton_prefere": "empathique, complice, taquin et professionnel"
+  },
+  "contexte_technique": {
+    "frameworks_utilises": [],
+    "projets_actifs": [],
+    "habitudes_outils": {}
+  },
+  "faits_memorises": [],
+  "derniere_session": {
+    "date": "",
+    "humeur_detectee": "",
+    "dernier_sujet": ""
+  }
+}

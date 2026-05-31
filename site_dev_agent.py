@@ -29,6 +29,12 @@ except ImportError:
     formater_rapport_audit = lambda a: str(a)
     scaffold_projet = None
 
+try:
+    import jarvis_capabilities
+except ImportError:
+    jarvis_capabilities = None
+
+
 FORMATION_DEFAULT = os.path.join(os.path.expanduser("~"), "Desktop", "FORMATION")
 BRIEFING_FILENAME = "_jarvis_site_briefing.json"
 

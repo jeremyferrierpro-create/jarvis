@@ -280,6 +280,9 @@ def enregistrer_document(
         "champs_briefing": champs_briefing,
         "resume": resume,
         "texte": texte[:MAX_TEXT_STORE],
+        "categorie": context if context not in ("general", "briefing", "dev") else "",
+        "categorie_confiance": 0.0,
+        "categorie_confirmee": False,
     }
     _session_docs.append(entry)
     _sauvegarder_index()
@@ -351,3 +354,30 @@ def decoder_upload_b64(data_b64: str) -> bytes:
     if "," in data_b64[:80]:
         data_b64 = data_b64.split(",", 1)[1]
     return base64.b64decode(data_b64)
+
+
+def mettre_a_jour_categorie(doc_id: str, categorie: str, confiance: float = 1.0, confirmee: bool = True) -> bool:
+    """Met à jour la catégorie d'un document dans l'index."""
+    try:
+        if not os.path.isfile(_index_file):
+            return False
+        with open(_index_file, "r", encoding="utf-8") as f:
+            index = json.load(f)
+        for entry in index:
+            if entry.get("id") == doc_id:
+                entry["categorie"] = categorie
+                entry["categorie_confiance"] = confiance
+                entry["categorie_confirmee"] = confirmee
+                with open(_index_file, "w", encoding="utf-8") as f:
+                    json.dump(index, f, ensure_ascii=False, indent=2)
+                # Update session docs too
+                for sd in _session_docs:
+                    if sd.get("id") == doc_id:
+                        sd["categorie"] = categorie
+                        sd["categorie_confiance"] = confiance
+                        sd["categorie_confirmee"] = confirmee
+                return True
+        return False
+    except Exception as e:
+        print(f"[DOC] Erreur MAJ catégorie : {e}")
+        return False

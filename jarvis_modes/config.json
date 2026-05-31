@@ -1,0 +1,80 @@
+{
+  "mode_standard": "standard",
+  "seuil_confiance_auto": 0.42,
+  "seuil_confiance_haute": 0.62,
+  "confirmation_si_ambigu": true,
+  "messages_sticky": 2,
+  "defaut_si_neutre": "personnel",
+  "mots_cles": {
+    "amoureux": [
+      "amour",
+      "chéri",
+      "cheri",
+      "mon amour",
+      "romantique",
+      "je t'aime",
+      "bisou",
+      "câlin",
+      "complice"
+    ],
+    "personnel": [
+      "moi",
+      "personnel",
+      "perso",
+      "intime",
+      "privé",
+      "maison",
+      "orchidée",
+      "orchidee",
+      "jardin",
+      "routine"
+    ],
+    "ami": [
+      "ami",
+      "confident",
+      "partager",
+      "pote",
+      "copain",
+      "sortie",
+      "apéro",
+      "balade",
+      "hobby"
+    ],
+    "psychologique": [
+      "psy",
+      "émotion",
+      "emotion",
+      "bien-être",
+      "anxiété",
+      "stress",
+      "je me sens",
+      "mental",
+      "déprime",
+      "parler de moi"
+    ],
+    "professionnel": [
+      "code",
+      "api",
+      "fastapi",
+      "projet",
+      "bug",
+      "deploy",
+      "webdev",
+      "client",
+      "deadline"
+    ]
+  },
+  "prompts_experts": {
+    "dossier": "jarvis_modes",
+    "fichier": "prompt.md",
+    "modes": ["standard", "amoureux", "personnel", "ami", "psychologique", "professionnel"]
+  },
+  "raccourcis_clavier": {
+    "1": "amoureux",
+    "2": "personnel",
+    "3": "ami",
+    "4": "psychologique",
+    "5": "professionnel",
+    "0": "standard"
+  }
+}

@@ -1,0 +1,20 @@
+{
+    "projects": {
+        "exemple_api": {
+            "nom": "Refonte API",
+            "description": "Migration vers FastAPI",
+            "objectifs": ["Tests", "Documentation OpenAPI"],
+            "statut": "en_cours",
+            "cree_le": "2026-05-30",
+            "taches": [
+                {
+                    "id": "a1b2c3",
+                    "titre": "Écrire les tests unitaires",
+                    "priorite": "haute",
+                    "fait": false,
+                    "cree_le": "2026-05-30"
+                }
+            ]
+        }
+    }
+}

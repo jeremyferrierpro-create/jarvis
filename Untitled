@@ -1,0 +1,26 @@
+{
+  "profil_utilisateur": {
+    "prenom": "Jeremy",
+    "age": "45",
+    "ville": "Lavelanet",
+    "profession": "Developpeur web",
+    "partenaire": "",
+    "enfants": "",
+    "passions": "Developpement Web, orchidées",
+    "ton_prefere": "Décontracté, amical et formel"
+  },
+  "contexte_technique": {
+    "frameworks_preferes": [],
+    "projets_actifs": {},
+    "derniers_bugs_resolus": []
+  },
+  "habitudes_et_preferences": {
+    "horaires_de_code": "ex: Tard le soir",
+    "boisson_preferee": "",
+    "humeur_generale": ""
+  },
+  "faits_memorises": [
+    {"date": "2026-05-30", "fait": "A un problème de pucerons sur son orchidée Phalaenopsis."},
+    {"date": "2026-05-30", "fait": "Travaille actuellement sur la refonte d'une API FastAPI."}
+  ]
+}

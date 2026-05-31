@@ -1,0 +1,14 @@
+{
+  "souvenirs": [
+    {
+      "id": "7b59db7a",
+      "date": "2026-05-30 20:50",
+      "titre": "Idée romantique proposée",
+      "detail": "Lettre vocale : enregistrez-vous un message, je vous aide à le peaufiner.",
+      "type": "romantique",
+      "importance": "normale"
+    }
+  ],
+  "preferences": [],
+  "conversations_cles": []
+}

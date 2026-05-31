@@ -65,6 +65,14 @@ const appAddBtn = document.getElementById("app-add-btn") as HTMLButtonElement;
 const settingsSaveBtn = document.getElementById("settings-save-btn") as HTMLButtonElement;
 const settingsMicEl = document.getElementById("settings-mic") as HTMLSelectElement;
 const settingsMusiqueLienEl = document.getElementById("settings-musique-lien") as HTMLInputElement;
+const settingsTtsToneEl = document.getElementById("settings-tts-tone") as HTMLSelectElement;
+const settingsTtsVoiceEl = document.getElementById("settings-tts-voice") as HTMLSelectElement;
+const settingsTtsTestBtn = document.getElementById("settings-tts-test") as HTMLButtonElement;
+const docConfirmModal = document.getElementById("doc-confirm-modal") as HTMLDivElement;
+const docConfirmText = document.getElementById("doc-confirm-text") as HTMLParagraphElement;
+const docConfirmOptions = document.getElementById("doc-confirm-options") as HTMLDivElement;
+
+let toneVoices: Record<string, string> = {};
 const haEntitiesListEl = document.getElementById("ha-entities-list") as HTMLDivElement;
 const haAddNomEl = document.getElementById("ha-add-nom") as HTMLInputElement;
 const haAddEntityEl = document.getElementById("ha-add-entity") as HTMLInputElement;
@@ -228,16 +236,15 @@ function connect(): void {
 
       if (data.type === "document_upload_result") {
         const ok = (data as { ok?: boolean }).ok;
-        const fn = (data as { filename?: string }).filename || "fichier";
+        const fn = (data as { filename?: string }).filename;
+        const chars = (data as { chars?: number }).chars;
+        const cat = (data as { categorie?: string }).categorie || "";
         const err = (data as { error?: string }).error;
-        const resume = (data as { resume?: string }).resume;
         if (ok) {
-          setDocStatus(`✔ ${fn} analysé`, "ok");
-          if (resume) {
-            const li = document.createElement("li");
-            li.textContent = `${fn} — ${resume.slice(0, 80)}…`;
-            docUploadListEl.prepend(li);
-          }
+          setDocStatus(`✓ ${fn} analysé (${chars} car.)`, "ok");
+          const li = document.createElement("li");
+          li.innerHTML = `<strong>${fn}</strong> <span style="font-size:10px; color:#aaa; margin-left:8px;">(${chars} car.)</span> <span style="font-size:10px; background:rgba(0,229,255,0.2); padding:2px 4px; border-radius:2px;">${cat}</span>`;
+          docUploadListEl.prepend(li);
         } else {
           setDocStatus(`✕ ${err || "Erreur"}`, "err");
         }
@@ -245,13 +252,44 @@ function connect(): void {
       }
 
       if (data.type === "documents_list") {
-        const docs = (data as { documents?: { filename: string; chars: number; date: string }[] }).documents || [];
+        const docs = (data as { documents?: { filename: string; chars: number; date: string; categorie?: string }[] }).documents || [];
         docUploadListEl.innerHTML = "";
         docs.slice().reverse().forEach(d => {
           const li = document.createElement("li");
-          li.textContent = `${d.filename} (${d.chars} car.) — ${d.date}`;
+          const cat = d.categorie ? `<span style="font-size:10px; background:rgba(0,229,255,0.2); padding:2px 4px; border-radius:2px; margin-right:6px;">${d.categorie}</span>` : "";
+          li.innerHTML = `${cat}${d.filename} (${d.chars} car.) — ${d.date}`;
           docUploadListEl.appendChild(li);
         });
+        return;
+      }
+
+      if (data.type === "document_confirm_category") {
+        const docId = (data as { doc_id?: string }).doc_id;
+        const suggested = (data as { suggested?: string }).suggested;
+        const options = (data as { options?: string[] }).options || [];
+        const filename = (data as { filename?: string }).filename;
+        const raison = (data as { raison?: string }).raison;
+        const conf = (data as { confiance?: number }).confiance;
+
+        docConfirmText.innerHTML = `Le document <b>${filename}</b> semble être de type <b>${suggested}</b> (confiance: ${Math.round(conf! * 100)}%).<br><span style="font-size:12px; color:#aaa;">${raison}</span><br><br>Veuillez confirmer sa catégorie :`;
+        docConfirmOptions.innerHTML = "";
+        options.forEach(opt => {
+          const btn = document.createElement("button");
+          btn.textContent = opt;
+          btn.className = "settings-btn";
+          if (opt === suggested) {
+            btn.style.borderColor = "#00e5ff";
+            btn.style.fontWeight = "bold";
+          }
+          btn.addEventListener("click", () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "document_category_confirmed", doc_id: docId, categorie: opt }));
+            }
+            docConfirmModal.style.display = "none";
+          });
+          docConfirmOptions.appendChild(btn);
+        });
+        docConfirmModal.style.display = "block";
         return;
       }
 
@@ -295,6 +333,18 @@ function connect(): void {
         }
         renderHaEntities();
         settingsMusiqueLienEl.value = settings.musique_lien || "";
+        if (settings.tts) {
+          if (settings.tts.voices_by_tone) {
+            toneVoices = settings.tts.voices_by_tone;
+          } else if (settings.tts.voice_id) {
+            // Fallback
+            toneVoices["professionnel"] = settings.tts.voice_id;
+          }
+          const activeTone = settingsTtsToneEl.value;
+          if (toneVoices[activeTone]) {
+            settingsTtsVoiceEl.value = toneVoices[activeTone];
+          }
+        }
         return;
       }
 
@@ -723,8 +773,35 @@ appAddBtn.addEventListener("click", () => {
   }
 });
 
+settingsTtsToneEl?.addEventListener("change", () => {
+  const tone = settingsTtsToneEl.value;
+  if (toneVoices[tone]) {
+    settingsTtsVoiceEl.value = toneVoices[tone];
+  } else {
+    // Default fallback
+    settingsTtsVoiceEl.value = "fr-FR-HenriNeural";
+  }
+});
+
+settingsTtsVoiceEl?.addEventListener("change", () => {
+  const tone = settingsTtsToneEl.value;
+  toneVoices[tone] = settingsTtsVoiceEl.value;
+});
+
+settingsTtsTestBtn?.addEventListener("click", () => {
+  const voice_id = settingsTtsVoiceEl.value;
+  const tone = settingsTtsToneEl.value;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "test_voice", voice_id, tone }));
+  }
+});
+
 settingsSaveBtn.addEventListener("click", () => {
   const micVal = settingsMicEl.value;
+  // Ensure the current tone is saved
+  const tone = settingsTtsToneEl.value;
+  toneVoices[tone] = settingsTtsVoiceEl.value;
+
   const settings = {
     user_name: settingsNameEl.value.trim(),
     user_age: settingsAgeEl.value.trim(),
@@ -732,6 +809,10 @@ settingsSaveBtn.addEventListener("click", () => {
     custom_apps: currentCustomApps,
     ha_custom_entities: currentHaEntities,
     musique_lien: settingsMusiqueLienEl.value.trim(),
+    tts: {
+      voice_id: toneVoices["professionnel"] || settingsTtsVoiceEl.value,
+      voices_by_tone: toneVoices
+    }
   };
 
   if (ws && ws.readyState === WebSocket.OPEN) {

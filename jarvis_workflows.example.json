@@ -1,0 +1,25 @@
+{
+    "workflows": {
+        "matin_dev": {
+            "label": "Routine matin développeur",
+            "steps": [
+                {"action": "mode_boulot"},
+                {"action": "info_systeme"}
+            ]
+        },
+        "audit_projet": {
+            "label": "Audit UI et sécurité",
+            "steps": [
+                {"action": "auditer_ui", "chemin_dossier": "projects/sites"},
+                {"action": "auditer_securite", "chemin_dossier": "projects/sites"}
+            ]
+        },
+        "pause": {
+            "label": "Pause — confort visuel et sonore",
+            "steps": [
+                {"action": "luminosite", "direction": "baisser"},
+                {"action": "volume_systeme", "direction": "baisser", "paliers": 3}
+            ]
+        }
+    }
+}

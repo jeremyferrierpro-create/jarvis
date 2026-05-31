@@ -1,0 +1,86 @@
+{
+  "_schema": "v1",
+  "modes": {
+    "personnel": {
+      "insights": [
+        {
+          "id": "8b46961322",
+          "type": "preference",
+          "texte": "le the le soir",
+          "source": "echange",
+          "date": "2026-05-30 21:04",
+          "utilisations": 0
+        },
+        {
+          "id": "bf712337e1",
+          "type": "contexte",
+          "texte": "intention=vie_personnelle, humeur=neutre",
+          "source": "meta",
+          "date": "2026-05-30 21:26",
+          "utilisations": 4,
+          "derniere_vue": "2026-05-30T21:48:32.298559"
+        }
+      ],
+      "stats": {
+        "count": 2
+      }
+    },
+    "psychologique": {
+      "insights": [
+        {
+          "id": "41ce18943d",
+          "type": "enseignement",
+          "texte": "Q: je me sens vidé. Je ne sais pas comment me sentir mieux. Une idée ? → Je suis désolé d'apprendre que tu te sens vidé, Jérémy. Voici quelques idées qui pourraient t'aider à te sentir mieux : 1. **Prends une pause** : Éloigne-toi de l'écran, va prendre l'air ou fais une courte promenade. 2. **Respiration consciente** : Prends quelques minutes pour te concentrer sur ta respiration, en inspirant profondément et en expirant lentement. 3. **Écoute de la musique relaxante*",
+          "source": "echange",
+          "date": "2026-05-30 21:23",
+          "utilisations": 0
+        },
+        {
+          "id": "8876f18440",
+          "type": "contexte",
+          "texte": "intention=conversation, humeur=curieux",
+          "source": "meta",
+          "date": "2026-05-30 21:23",
+          "utilisations": 0
+        }
+      ],
+      "stats": {
+        "count": 2
+      }
+    },
+    "ami": {
+      "insights": [
+        {
+          "id": "0a51a8aabd",
+          "type": "contexte",
+          "texte": "intention=social, humeur=neutre",
+          "source": "meta",
+          "date": "2026-05-30 21:44",
+          "utilisations": 0
+        }
+      ],
+      "stats": {
+        "count": 1
+      }
+    },
+    "amoureux": {
+      "insights": [
+        {
+          "id": "a098d664e2",
+          "type": "contexte",
+          "texte": "intention=neutre, humeur=neutre",
+          "source": "meta",
+          "date": "2026-05-30 21:47",
+          "utilisations": 2,
+          "derniere_vue": "2026-05-30T21:47:18.363868"
+        }
+      ],
+      "stats": {
+        "count": 1
+      }
+    }
+  },
+  "meta": {
+    "derniere_maj": "2026-05-30T21:48:32.298559"
+  }
+}

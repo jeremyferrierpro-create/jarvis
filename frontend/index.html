@@ -260,9 +260,13 @@
     <div class="doc-context-row">
       <label>Contexte</label>
       <select id="doc-context-select">
-        <option value="briefing">Briefing site web</option>
-        <option value="dev">Développement en cours</option>
-        <option value="general" selected>Général</option>
+        <option value="auto" selected>🤖 Détection automatique (IA)</option>
+        <option value="prive">🔒 Privé / Personnel</option>
+        <option value="travail">💼 Travail / Professionnel</option>
+        <option value="apprentissage">📚 Apprentissage / Formation</option>
+        <option value="amitie">👥 Amitié / Social</option>
+        <option value="dev">💻 Développement / Code</option>
+        <option value="briefing">📋 Briefing site web</option>
       </select>
     </div>
     <div id="doc-drop-zone" class="doc-drop-zone">
@@ -272,6 +276,11 @@
     <button type="button" id="doc-scan-btn" class="doc-scan-btn">Analyser jarvis_uploads (OCR + cognition)</button>
     <ul id="doc-upload-list" class="doc-upload-list"></ul>
     <div id="doc-upload-status" class="doc-upload-status"></div>
+  </div>
+
+  <div id="doc-confirm-modal" class="doc-confirm-modal" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(15,21,38,0.95); border:1px solid #00e5ff; padding:20px; border-radius:8px; z-index:100; backdrop-filter:blur(10px); width:90%; max-width:400px; text-align:center;">
+    <p id="doc-confirm-text" style="color:white; margin-bottom:15px;"></p>
+    <div id="doc-confirm-options" style="display:flex; flex-direction:column; gap:10px;"></div>
   </div>
 
   <div id="subtitle-hud"
@@ -571,6 +580,30 @@
       <div class="settings-group">
         <label for="settings-age">ÂGE</label>
         <input type="number" id="settings-age" placeholder="Ex: 37">
+      </div>
+
+      <div class="settings-group">
+        <label>VOIX TTS PAR MODE</label>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <select id="settings-tts-tone">
+            <option value="professionnel">🎯 Professionnel</option>
+            <option value="sarcastique">😏 Sarcastique</option>
+            <option value="amoureux">❤️ Amoureux</option>
+            <option value="coach">💪 Coach</option>
+            <option value="anglais">🇬🇧 Anglais</option>
+            <option value="pirate">🏴‍☠️ Pirate</option>
+            <option value="zen">🧘 Zen</option>
+          </select>
+          <select id="settings-tts-voice">
+            <option value="fr-FR-HenriNeural">Henri (Homme - Standard)</option>
+            <option value="fr-FR-DeniseNeural">Denise (Femme - Standard)</option>
+            <option value="fr-FR-EloiseNeural">Eloise (Femme - Alternative)</option>
+            <option value="fr-FR-RemyNeural">Remy (Homme - Alternatif)</option>
+            <option value="en-US-GuyNeural">Guy (Homme - Anglais)</option>
+            <option value="en-US-JennyNeural">Jenny (Femme - Anglais)</option>
+          </select>
+        </div>
+        <button id="settings-tts-test" class="settings-btn" style="background:rgba(0,229,255,0.1); border:1px solid #00e5ff;">🔊 Tester cette voix</button>
       </div>
 
       <div class="settings-group" style="margin-top: 30px;">

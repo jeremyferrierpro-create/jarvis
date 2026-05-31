@@ -1,0 +1,23 @@
+{
+  "projects": {
+    "refonte_api": {
+      "nom": "Refonte API",
+      "description": "Refonte de l'API pour le site Mes Orchidées",
+      "objectifs": [
+        "FastAPI",
+        "tests"
+      ],
+      "statut": "en_cours",
+      "cree_le": "2026-05-30",
+      "taches": [
+        {
+          "id": "e49402",
+          "titre": "Écrire les tests FastAPI",
+          "priorite": "haute",
+          "fait": false,
+          "cree_le": "2026-05-30"
+        }
+      ]
+    }
+  }
+}

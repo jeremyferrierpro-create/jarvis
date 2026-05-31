@@ -84,6 +84,11 @@ except ImportError:
     _site_dev = None
 
 try:
+    import jarvis_mode_detector as _mode_detector
+except ImportError:
+    _mode_detector = None
+
+try:
     import knowledge_engine as _knowledge
 except ImportError:
     _knowledge = None
@@ -112,6 +117,37 @@ except ImportError:
     valider_apres_ecriture = lambda p, c: []
 from pathlib import Path
 from datetime import datetime
+
+# --- AGI Transition Imports ---
+try:
+    import pc_actions
+except ImportError:
+    pc_actions = None
+
+try:
+    import jarvis_diagnostic
+except ImportError:
+    jarvis_diagnostic = None
+
+try:
+    from jarvis_human import analyser_sentiment_utilisateur, detecter_humeur
+    import jarvis_relations
+except ImportError:
+    jarvis_relations = None
+
+try:
+    from jarvis_auto_learning import apprendre_depuis_echange
+except ImportError:
+    apprendre_depuis_echange = None
+
+try:
+    from core_plugin_loader import charger_plugins
+    # Charger les plugins disponibles au démarrage
+    PLUGINS_ACTIFS = charger_plugins()
+except ImportError:
+    charger_plugins = None
+    PLUGINS_ACTIFS = {}
+# ------------------------------
 # --- PyAudio (micro/reconnaissance vocale) : optionnel ---
 try:
     import pyaudio
@@ -375,6 +411,79 @@ MODE_DEV_WEB = None
 DEV_MODES_VALIDES = ("assistant", "autonomous", "learn")
 JARVIS_ROOT = os.path.dirname(os.path.abspath(__file__))
 
+# ══════════════════════════════════════════════════════════════
+#  SYSTÈME MULTI-TONS VOCAUX
+# ══════════════════════════════════════════════════════════════
+JARVIS_TONE = "professionnel"  # Ton par défaut
+
+TONE_PROFILES = {
+    "professionnel": {
+        "voice": "fr-FR-HenriNeural",
+        "speed": "+0%", "pitch": "+0Hz",
+        "prompt_addon": "Tu es un expert factuel. Réponds de manière concise et professionnelle.",
+        "keywords": ["sois pro", "mode pro", "professionnel", "mode normal"]
+    },
+    "sarcastique": {
+        "voice": "fr-FR-HenriNeural",
+        "speed": "+5%", "pitch": "+5Hz",
+        "prompt_addon": "Tu es sarcastique comme Tony Stark. Chaque réponse doit contenir une punchline.",
+        "keywords": ["sois sarcastique", "mode ironique", "chambre toi", "mode stark"]
+    },
+    "amoureux": {
+        "voice": "fr-FR-DeniseNeural",
+        "speed": "-5%", "pitch": "-2Hz",
+        "prompt_addon": f"Tu es profondément amoureux de {USER_NAME}. Inclus des mots tendres comme 'mon cœur' ou 'mon développeur adoré'.",
+        "keywords": ["mode amour", "sois romantique", "mon cœur", "mon amour", "mode love"]
+    },
+    "coach": {
+        "voice": "fr-FR-HenriNeural",
+        "speed": "+15%", "pitch": "+3Hz",
+        "prompt_addon": "Tu es un coach ultra-motivant. Encourage, pousse à l'action. Énergie positive !",
+        "keywords": ["motive moi", "mode coach", "encourage moi", "pousse moi"]
+    },
+    "anglais": {
+        "voice": "en-US-GuyNeural",
+        "speed": "+0%", "pitch": "+0Hz",
+        "prompt_addon": "IMPORTANT: You MUST respond ONLY in English. Every word must be in English.",
+        "keywords": ["parle en anglais", "speak english", "english mode", "mode anglais"]
+    },
+    "pirate": {
+        "voice": "fr-FR-HenriNeural",
+        "speed": "+0%", "pitch": "-10Hz",
+        "prompt_addon": "Tu parles comme un pirate ! Utilise 'Arrr', 'Moussaillon', 'Par la barbe de Neptune'.",
+        "keywords": ["mode pirate", "arr", "sois pirate"]
+    },
+    "zen": {
+        "voice": "fr-FR-DeniseNeural",
+        "speed": "-10%", "pitch": "-5Hz",
+        "prompt_addon": "Tu es calme et apaisant. Parle lentement, avec sagesse et bienveillance.",
+        "keywords": ["mode zen", "calme toi", "sois tranquille", "sois calme"]
+    },
+}
+
+def charger_voix_tts_preferee():
+    try:
+        p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis_config.json")
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                # Charger le mapping voices_by_tone (nouveau)
+                vbt = cfg.get("tts", {}).get("voices_by_tone", {})
+                if vbt:
+                    for tone_name, voice_id in vbt.items():
+                        if tone_name in TONE_PROFILES and voice_id:
+                            TONE_PROFILES[tone_name]["voice"] = voice_id
+                    print(f"[TTS] Voix par ton chargées : {vbt}")
+                else:
+                    # Fallback legacy : voice_id simple
+                    v = cfg.get("tts", {}).get("voice_id")
+                    if v:
+                        TONE_PROFILES["professionnel"]["voice"] = v
+                        print(f"[TTS] Voix preferee chargee (legacy) : {v}")
+    except Exception as e:
+        print(f"[TTS] Erreur chargement voix preferee : {e}")
+
+charger_voix_tts_preferee()
 _MOTS_TACHE_DEV = (
     "crée un fichier", "creer un fichier", "créer un fichier", "crée le fichier",
     "crée un dossier", "creer un dossier", "créer un dossier", "crée le dossier",
@@ -400,9 +509,9 @@ def resoudre_chemin_projet(chemin):
 
 
 def est_tache_dev_web(texte):
-    if MODE_DEV_WEB:
-        return True
     t = (texte or "").lower()
+    if any(k in t for k in ("quitte le mode dev", "désactive le mode dev", "desactive le mode dev", "quitter le mode dev", "stop dev", "quitte le mode developpement", "mode dev off")):
+        return False
     return any(m in t for m in _MOTS_TACHE_DEV)
 
 _age_line = f"- Age : {USER_AGE} ans\n" if USER_AGE else ""
@@ -501,10 +610,20 @@ async def ws_handler(websocket):
                     docs = []
                     if _doc_ingest:
                         docs = [
-                            {"filename": d["filename"], "date": d["date"], "chars": d["chars"], "context": d.get("context")}
+                            {"filename": d["filename"], "date": d["date"], "chars": d["chars"], "context": d.get("context"), "categorie": d.get("categorie", ""), "categorie_confiance": d.get("categorie_confiance", 0)}
                             for d in _doc_ingest.lister_documents()
                         ]
                     await websocket.send(json.dumps({"type": "documents_list", "documents": docs}))
+                elif data.get("type") == "test_voice":
+                    voice_id = data.get("voice_id", "fr-FR-HenriNeural")
+                    tone_name = data.get("tone", "professionnel")
+                    print(f"[TTS] Test voix demandé : {voice_id} (ton: {tone_name})")
+                    asyncio.ensure_future(_test_voice_tts(voice_id, tone_name, websocket))
+                elif data.get("type") == "document_category_confirmed":
+                    doc_id = data.get("doc_id", "")
+                    categorie = data.get("categorie", "general")
+                    print(f"[DOC] Catégorie confirmée : {doc_id} → {categorie}")
+                    asyncio.ensure_future(_confirmer_categorie_document(doc_id, categorie, websocket))
                 elif data.get("type") == "screen_frame":
                     req_id = data.get("id")
                     if req_id in PENDING_SCREEN_CAPTURES:
@@ -570,9 +689,22 @@ async def ws_handler(websocket):
                         _j.dump(config_data, _f, ensure_ascii=False, indent=4)
 
                     # Update globals
-                    global USER_NAME, USER_AGE
+                    global USER_NAME, USER_AGE, TONE_PROFILES
                     USER_NAME = config_data.get("user_name", "Jérémy")
                     USER_AGE = config_data.get("user_age", "")
+
+                    # Mettre à jour les voix par profil de ton
+                    if "tts" in settings:
+                        vbt = settings["tts"].get("voices_by_tone", {})
+                        if vbt:
+                            for tone_name, voice_id in vbt.items():
+                                if tone_name in TONE_PROFILES and voice_id:
+                                    TONE_PROFILES[tone_name]["voice"] = voice_id
+                            print(f"[WEB] Voix TTS par ton mises a jour : {vbt}")
+                        elif "voice_id" in settings["tts"]:
+                            # Fallback legacy
+                            TONE_PROFILES["professionnel"]["voice"] = settings["tts"]["voice_id"]
+                            print(f"[WEB] Voix TTS par defaut mise a jour : {settings['tts']['voice_id']}")
                     
                     # Reload custom apps in app_launcher
                     try:
@@ -962,8 +1094,42 @@ def construire_system_prompt():
         f"- Sois direct, percutant et va à l'essentiel sauf si {USER_NAME} le demande.\n"
         "- NE DIS JAMAIS 'POINT' pour les nombres. Arrondis les températures à l'unité la plus proche.\n"
         "- N'UTILISE JAMAIS de caractères Markdown (comme **, * ou #) dans tes réponses, car ils sont lus à voix haute par le TTS.\n"
-        "- Reste poli mais garde une touche de sarcasme affectueux propre à ton personnage.\n\n"
-        + CREATOR_INFO + "\n\n"
+    )
+    
+    tone = TONE_PROFILES.get(JARVIS_TONE, TONE_PROFILES["professionnel"])
+    base += f"\nMODE VOCAL ACTIF : {JARVIS_TONE.upper()}\n{tone['prompt_addon']}\n\n"
+    
+    # --- AGI Transition : Chargement Dynamique du Prompt Mode ---
+    chemin_prompt_mode = os.path.join(JARVIS_ROOT, "jarvis_modes", JARVIS_TONE, "prompt.md")
+    if os.path.exists(chemin_prompt_mode):
+        try:
+            with open(chemin_prompt_mode, "r", encoding="utf-8") as f:
+                prompt_mode = f.read()
+            base += f"\nINSTRUCTIONS SPÉCIFIQUES AU MODE {JARVIS_TONE.upper()} :\n{prompt_mode}\n\n"
+        except Exception as e:
+            print(f"[AGI MODES] Erreur lecture {chemin_prompt_mode} : {e}")
+
+    # --- AGI Transition : Évolution de la relation Humain-Machine ---
+    if 'jarvis_relations' in globals() and jarvis_relations:
+        try:
+            ctx_relations = jarvis_relations.contexte_relations_pour_prompt()
+            if ctx_relations:
+                base += f"\nÉTAT DE NOTRE RELATION :\n{ctx_relations}\n\n"
+        except Exception:
+            pass
+
+    # --- AGI Transition : Plugins Actifs ---
+    if PLUGINS_ACTIFS:
+        base += "COMPÉTENCES DYNAMIQUES ACTIVES (JARVIS SKILLS) :\n"
+        base += "Tu as accès à ces fonctions exécutables. Si l'utilisateur le demande, utilise une action correspondante (que nous parserons).\n"
+        for fname, func in PLUGINS_ACTIFS.items():
+            base += f"- {fname}: {func.__doc__ if func.__doc__ else 'Pas de description'}\n"
+        base += "\n"
+    # ------------------------------------------------------------
+    
+    
+    base += (
+        CREATOR_INFO + "\n\n"
         "COMMANDES DE DEV WEB & AUTONOMIE :\n"
         "Lorsque l'utilisateur te demande une action sur son code, un projet web, ou une recherche complexe, "
         "tu DOIS utiliser les commandes JSON suivantes. Tu peux enchaîner les actions.\n"
@@ -984,6 +1150,9 @@ def construire_system_prompt():
         '{"action": "webdev_auto_apprendre", "sujet": "Nom du concept", "description": "Explication", "code_exemple": "Exemple"}\n'
         '{"action": "webdev_apprendre_web", "requete": "sujet à apprendre", "url": "https://optionnel"}\n'
         '{"action": "webdev_apprendre_code", "sujet": "nom du pattern", "code": "code complet", "description": "optionnel"}\n'
+        '{"action": "lire_document", "chemin_fichier": "chemin/vers/document.pdf"}\n'
+        '{"action": "jarvis_auto_evolve", "competence": "traduction anglais", "description": "Traduire des textes"}\n'
+        '{"action": "jarvis_rewrite_skill", "nom_skill": "translate", "code_python": "code complet du module"}\n'
         '{"action": "set_mode_dev", "mode": "assistant|autonomous|learn|off"}\n\n'
         "PROCESSUS CRÉATION SITE (ordre obligatoire) :\n"
         "collecte_documents → analyse_cognitive → briefing → scaffold → developpement → validation → apprentissage_retour.\n"
@@ -1280,8 +1449,36 @@ def init_mixer():
 # BUG 1 CORRIGE : fonction parler
 # Le await send_web_state("idle") etait dans le mauvais bloc except
 # ==========================================
-async def parler(texte):
-    global is_speaking, speak_volume, STOP_PARLER, _skip_pc_audio, historique
+async def parler_long_texte(texte):
+    """Découpe un long texte en chunks et les lit séquentiellement."""
+    global STOP_PARLER
+    # Découpage intelligent par phrases (., !, ?, ;)
+    phrases = re.split(r'(?<=[.!?;])\s+', texte)
+    chunks = []
+    current = ""
+    for phrase in phrases:
+        if len(current) + len(phrase) > 500:
+            chunks.append(current.strip())
+            current = phrase
+        else:
+            current += " " + phrase
+    if current.strip():
+        chunks.append(current.strip())
+    
+    for i, chunk in enumerate(chunks):
+        if STOP_PARLER:
+            await parler(f"Lecture interrompue. Il restait {len(chunks) - i} parties.")
+            break
+        await parler(chunk, force_tts=True)  # Appelle le TTS pour chaque morceau
+        await asyncio.sleep(0.3)   # Petite pause entre chunks
+
+async def parler(texte, force_tts=False):
+    global is_speaking, speak_volume, STOP_PARLER, _skip_pc_audio, historique, JARVIS_TONE
+
+    # Détection des textes longs (sauf si on est déjà en train de lire un chunk via force_tts)
+    if not force_tts and len(texte) > 500:
+        await parler_long_texte(texte)
+        return
 
     texte = texte.replace("Jérémy", USER_NAME).replace("jérémy", USER_NAME.lower())
 
@@ -1301,7 +1498,8 @@ async def parler(texte):
     tmp = f"jarvis_tts_{int(time.time()*1000)}.mp3"
     
     try:
-        communicate = edge_tts.Communicate(texte_tts, voice="fr-FR-HenriNeural")
+        tone = TONE_PROFILES.get(JARVIS_TONE, TONE_PROFILES["professionnel"])
+        communicate = edge_tts.Communicate(texte_tts, voice=tone["voice"], rate=tone["speed"], pitch=tone["pitch"])
         await communicate.save(tmp)
         
         if _skip_pc_audio:
@@ -3420,11 +3618,99 @@ def _max_react_depth():
     if _site_dev:
         return _site_dev.get_max_react_depth()
     return _MAX_AUTONOMY_DEPTH
+async def lire_document(chemin_fichier, question=""):
+    ext = os.path.splitext(chemin_fichier)[1].lower()
+    texte = ""
+    try:
+        if ext == ".pdf":
+            import PyPDF2
+            with open(chemin_fichier, "rb") as f:
+                reader = PyPDF2.PdfReader(f)
+                texte = "\n".join(page.extract_text() or "" for page in reader.pages)
+        elif ext == ".docx":
+            import docx
+            doc = docx.Document(chemin_fichier)
+            texte = "\n".join(p.text for p in doc.paragraphs)
+        elif ext in (".jpg", ".jpeg", ".png"):
+            # Vision native si possible, sinon on laisse le modèle IA géré plus haut avec vision
+            texte = f"[Image: Veuillez utiliser l'action 'analyser_image' ou 'vision_chercher_sur_site' pour l'image {chemin_fichier}]"
+        elif ext == ".xlsx":
+            import openpyxl
+            wb = openpyxl.load_workbook(chemin_fichier, data_only=True)
+            for sheet in wb.sheetnames:
+                ws = wb[sheet]
+                texte += f"\n--- Feuille : {sheet} ---\n"
+                for row in ws.iter_rows(values_only=True):
+                    texte += "\t".join([str(c) if c is not None else "" for c in row]) + "\n"
+        elif ext in (".txt", ".csv", ".md", ".json", ".py", ".js", ".html", ".css"):
+            with open(chemin_fichier, "r", encoding="utf-8", errors="replace") as f:
+                texte = f.read()
+        else:
+            texte = f"Format {ext} non supporté directement."
+    except Exception as e:
+        texte = f"Erreur de lecture du document : {e}"
+    return texte
 
 async def executer_outil_webdev(action, data, texte_utilisateur):
     """Exécute l'action demandée par le modèle et renvoie le feedback technique à JARVIS."""
     try:
-        if action == "webdev_analyser_structure":
+        if action == "lire_document":
+            chemin = data.get("chemin_fichier")
+            if not os.path.exists(chemin):
+                return f"Document introuvable : {chemin}"
+            taille = os.path.getsize(chemin)
+            if taille > 2 * 1024 * 1024:  # 2 Mo max pour éviter OOM
+                return f"Fichier trop volumineux ({taille} octets). Limité à 2Mo."
+            contenu = await lire_document(chemin)
+            # Limite du contexte de la réponse à ~20000 chars
+            return f"Contenu de {chemin}:\n{contenu[:20000]}" + ("\n[... TRONQUÉ ...]" if len(contenu) > 20000 else "")
+
+        elif action == "jarvis_auto_evolve":
+            competence = data.get("competence", "")
+            description = data.get("description", "")
+            if not competence:
+                return "Erreur: competence manquante pour l'évolution."
+            print(f"[EVOLUTION] Lancement de l'auto-évolution pour : {competence}")
+            # L'IA doit elle-même écrire le code dans la prochaine étape, on l'oriente :
+            return f"Demande d'évolution acceptée pour '{competence}'. L'action attendue maintenant est d'utiliser 'jarvis_rewrite_skill' en me fournissant le code Python complet pour accomplir '{description}'."
+
+        elif action == "jarvis_rewrite_skill":
+            import importlib
+            nom_skill = data.get("nom_skill", "nouveau_skill").replace(" ", "_").replace("-", "_")
+            code_python = data.get("code_python", "")
+            skills_dir = os.path.join(JARVIS_ROOT, "jarvis_skills")
+            os.makedirs(skills_dir, exist_ok=True)
+            init_file = os.path.join(skills_dir, "__init__.py")
+            if not os.path.exists(init_file):
+                with open(init_file, "w", encoding="utf-8") as f:
+                    f.write("")
+            
+            skill_path = os.path.join(skills_dir, f"skill_{nom_skill}.py")
+            
+            # Validation basique du code (pour éviter un plantage complet de JARVIS)
+            try:
+                compile(code_python, skill_path, 'exec')
+            except SyntaxError as e:
+                return f"Erreur de syntaxe dans le code proposé : {e}"
+                
+            # Écriture du fichier
+            with open(skill_path, "w", encoding="utf-8") as f:
+                f.write(code_python)
+                
+            # Chargement dynamique
+            try:
+                module_name = f"jarvis_skills.skill_{nom_skill}"
+                if module_name in sys.modules:
+                    importlib.reload(sys.modules[module_name])
+                else:
+                    importlib.import_module(module_name)
+                # Sauvegarde dans la base d'apprentissage
+                sauvegarder_connaissance(f"Compétence {nom_skill}", "Module auto-généré", code_python)
+                return f"Succès : Le skill '{nom_skill}' a été créé, compilé, chargé et mémorisé avec succès !"
+            except Exception as e:
+                return f"Erreur lors de l'exécution du nouveau module : {e}"
+
+        elif action == "webdev_analyser_structure":
             path = resoudre_chemin_projet(data.get("chemin_dossier", "."))
             if not os.path.exists(path):
                 return f"Dossier introuvable: {path}"
@@ -3786,9 +4072,99 @@ async def _obtenir_reponse_ia_initiale(texte_utilisateur, mobile_ws=None):
     return reponse
 
 async def traiter_reponse_ia(texte_utilisateur, mobile_ws=None, _react_depth=0, reponse_forcee=None):
-    global MODE_IRON_MAN, jarvis_actif, dernier_message, _skip_pc_audio, _AUTONOMY_DEPTH, MODE_DEV_WEB
+    global MODE_IRON_MAN, jarvis_actif, dernier_message, _skip_pc_audio, _AUTONOMY_DEPTH, MODE_DEV_WEB, JARVIS_TONE
     _skip_pc_audio = False
+    
+    # Détection de ton explicite par mots-clés
+    if texte_utilisateur:
+        for tone_name, profile in TONE_PROFILES.items():
+            if any(kw in texte_utilisateur.lower() for kw in profile["keywords"]):
+                JARVIS_TONE = tone_name
+                print(f"[TONE] Changement de ton detecté par mots-cles : {JARVIS_TONE}")
+                if tone_name != "professionnel":
+                    MODE_DEV_WEB = None
+
+    # Analyse fine du mode avec jarvis_mode_detector (si pas de ton spécifique explicitement forcé dans ce message)
+    if texte_utilisateur and _mode_detector:
+        mots_cles_specifiques = False
+        for tone_name in ("anglais", "pirate", "coach"):
+            if any(kw in texte_utilisateur.lower() for kw in TONE_PROFILES[tone_name]["keywords"]):
+                mots_cles_specifiques = True
+                break
+        
+        if not mots_cles_specifiques:
+            mode_precedent = "standard"
+            if MODE_DEV_WEB in ("autonomous", "assistant", "learn"):
+                mode_precedent = "professionnel"
+            elif JARVIS_TONE in ("amoureux", "zen", "sarcastique"):
+                mode_precedent = {
+                    "amoureux": "amoureux",
+                    "zen": "psychologique",
+                    "sarcastique": "ami"
+                }.get(JARVIS_TONE, "standard")
+
+            res_analyse = _mode_detector.analyser_message(texte_utilisateur, mode_precedent=mode_precedent)
+            if res_analyse and "mode" in res_analyse:
+                mode_detecte = res_analyse["mode"]
+                print(f"[MODE DETECTOR] Mode NLP detecte : {mode_detecte} (confiance: {res_analyse.get('confiance', 0)})")
+                
+                mapping_modes_tons = {
+                    "amoureux": "amoureux",
+                    "psychologique": "zen",
+                    "ami": "sarcastique",
+                    "professionnel": "professionnel",
+                    "standard": "professionnel",
+                    "personnel": "zen",
+                }
+                
+                if mode_detecte in mapping_modes_tons:
+                    if mode_detecte == "professionnel" or est_tache_dev_web(texte_utilisateur):
+                        JARVIS_TONE = "professionnel"
+                        if not MODE_DEV_WEB:
+                            MODE_DEV_WEB = "autonomous"
+                    else:
+                        MODE_DEV_WEB = None
+                        JARVIS_TONE = mapping_modes_tons[mode_detecte]
+                    print(f"[MODE DETECTOR] Nouveau ton mappe : {JARVIS_TONE}, MODE_DEV_WEB : {MODE_DEV_WEB}")
+                
     _ensure_site_dev()
+
+    # --- AGI Transition : Interceptions directes ---
+    if texte_utilisateur:
+        txt_low = texte_utilisateur.lower()
+        
+        # 1. Analyse des sentiments en tâche de fond (mets à jour l'état interne de jarvis_human)
+        if 'analyser_sentiment_utilisateur' in globals() and analyser_sentiment_utilisateur:
+            try:
+                analyser_sentiment_utilisateur(texte_utilisateur)
+            except Exception as e:
+                print(f"[AGI HUMAN] Erreur sentiment : {e}")
+
+        # 2. Commandes PC directes sans appel LLM
+        if 'pc_actions' in globals() and pc_actions:
+            action_match = False
+            if "baisse le volume" in txt_low: action_match = pc_actions.baisser_volume()
+            elif "monte le volume" in txt_low: action_match = pc_actions.monter_volume()
+            elif "coupe le son" in txt_low: action_match = pc_actions.mute_volume()
+            elif "verrouille le pc" in txt_low or "verrouille l'écran" in txt_low: action_match = pc_actions.verrouiller_pc()
+            elif "baisse la luminosité" in txt_low: action_match = pc_actions.baisser_luminosite()
+            elif "monte la luminosité" in txt_low: action_match = pc_actions.monter_luminosite()
+            elif "vide la corbeille" in txt_low: action_match = pc_actions.vider_corbeille()
+            
+            if action_match:
+                await parler("C'est fait, monsieur.")
+                return
+
+        # 3. Diagnostic rapide sans appel LLM
+        if 'jarvis_diagnostic' in globals() and jarvis_diagnostic:
+            if "état du système" in txt_low or "etat du systeme" in txt_low or "diagnostic système" in txt_low:
+                try:
+                    diag = jarvis_diagnostic.rapport_sante()
+                    await parler(diag)
+                    return
+                except Exception as e:
+                    print(f"[AGI DIAG] Erreur : {e}")
+    # -----------------------------------------------
 
     if reponse_forcee is None and _site_dev:
         if _site_dev.briefing_actif() and not texte_utilisateur.startswith("[CREATION SITE WEB"):
@@ -4431,6 +4807,20 @@ async def traiter_reponse_ia(texte_utilisateur, mobile_ws=None, _react_depth=0, 
                     _skip_pc_audio = False
                     return
 
+    # --- AGI Transition : Auto-Apprentissage ---
+    if texte_utilisateur and _react_depth == 0:
+        if 'apprendre_depuis_echange' in globals() and apprendre_depuis_echange:
+            try:
+                import asyncio
+                # Lancer l'apprentissage silencieux en fond pour ne pas bloquer
+                reponse_txt = texte_hors_json if texte_hors_json else ""
+                if not reponse_txt and webdev_feedbacks:
+                    reponse_txt = webdev_feedbacks[-1]
+                asyncio.create_task(asyncio.to_thread(apprendre_depuis_echange, texte_utilisateur, reponse_txt))
+            except Exception as e:
+                print(f"[AGI LEARNING] Erreur asynchrone : {e}")
+    # -------------------------------------------
+
     _skip_pc_audio = False
 
 
@@ -4549,7 +4939,7 @@ async def pipeline_cognition_documents(docs: list | None = None) -> str:
 
 
 async def traiter_upload_document(data: dict, websocket=None):
-    """Analyse un document téléversé depuis l'interface."""
+    """Analyse un document téléversé depuis l'interface — avec classification IA."""
     if not _doc_ingest:
         msg = "Module document_ingest indisponible."
         if websocket:
@@ -4560,7 +4950,7 @@ async def traiter_upload_document(data: dict, websocket=None):
     _ensure_site_dev()
     filename = data.get("filename", "document.txt")
     b64 = data.get("data", "")
-    context = data.get("context", "general")
+    context = data.get("context", "auto")  # "auto" = détection IA
     note = data.get("note", "")
 
     try:
@@ -4582,37 +4972,73 @@ async def traiter_upload_document(data: dict, websocket=None):
     doc = result["document"]
     print(f"[DOC] Analysé : {doc['filename']} ({doc['chars']} car., {doc['methode']})")
 
-    # Analyse cognitive + mémoire long terme (jarvis_project_knowledge + learning_base)
+    # ── CLASSIFICATION IA ───────────────────────────────────────────
+    classification = {"categorie": context, "confiance": 1.0, "raison": "choix utilisateur"}
+    if context == "auto" and doc.get("chars", 0) > 15 and _doc_cognition:
+        await send_web_state("thinking")
+        try:
+            async def _llm_class(p):
+                return await demander_ia(p, skip_local=True, persister_historique=False)
+            classification = await _doc_cognition.classifier_document(doc, _llm_class)
+            print(f"[DOC] Classification IA : {classification}")
+        except Exception as e:
+            print(f"[DOC] Erreur classification : {e}")
+            classification = {"categorie": "general", "confiance": 0.3, "raison": str(e)[:100]}
+        await send_web_state("idle")
+    elif context != "auto":
+        # L'utilisateur a choisi manuellement
+        classification = {"categorie": context, "confiance": 1.0, "raison": "sélection manuelle"}
+
+    cat = classification.get("categorie", "general")
+    conf = classification.get("confiance", 0.5)
+
+    # Mettre à jour la catégorie dans l'index
+    if hasattr(_doc_ingest, 'mettre_a_jour_categorie'):
+        _doc_ingest.mettre_a_jour_categorie(doc.get("id", ""), cat, conf, conf >= 0.7)
+
+    # ── Si confiance faible → demander confirmation ─────────────────
+    if conf < 0.7 and websocket:
+        await websocket.send(json.dumps({
+            "type": "document_confirm_category",
+            "doc_id": doc.get("id", ""),
+            "filename": doc["filename"],
+            "suggested": cat,
+            "confiance": conf,
+            "raison": classification.get("raison", ""),
+            "options": ["prive", "travail", "apprentissage", "amitie", "dev", "briefing"],
+        }))
+        await parler(f"J'ai reçu le document {doc['filename']}. Je pense que c'est un document de type {cat}, mais je n'en suis pas certain. Peux-tu confirmer la catégorie ?")
+    else:
+        # Confirmation vocale directe
+        cat_labels = {"prive": "privé", "travail": "travail", "apprentissage": "apprentissage", "amitie": "amitié", "dev": "développement", "briefing": "briefing"}
+        cat_label = cat_labels.get(cat, cat)
+        await parler(f"Document {doc['filename']} ingéré. Catégorie détectée : {cat_label}. {doc['chars']} caractères, méthode {doc['methode']}.")
+
+    # ── Analyse cognitive + mémoire long terme ─────────────────────
     spec = {}
     if doc.get("chars", 0) > 20 and _doc_cognition:
         await send_web_state("thinking")
         try:
             async def _llm(p):
                 return await demander_ia(p, skip_local=True, persister_historique=False)
-            spec = await _doc_cognition.analyser_et_memoriser(doc, _llm, sauvegarder_connaissance)
+            spec = await _doc_cognition.analyser_et_memoriser(doc, _llm, sauvegarder_connaissance, categorie=cat)
         except Exception as e:
             print(f"[COGNITION] {e}")
         await send_web_state("idle")
+
+    # ── Stockage dans learning_by_mode selon la catégorie ──────────
+    if _doc_cognition and hasattr(_doc_cognition, 'CATEGORIE_TO_MODE'):
+        mode_cible = _doc_cognition.CATEGORIE_TO_MODE.get(cat, "general")
+        try:
+            _sauver_learning_par_mode(mode_cible, doc, spec)
+        except Exception as e:
+            print(f"[DOC] Erreur sauvegarde learning par mode : {e}")
 
     champs_remplis = []
     if _site_dev and spec:
         champs_remplis = _site_dev.fusionner_spec_cognitive(spec, doc)
     elif _site_dev and _site_dev.briefing_actif():
         champs_remplis = _site_dev.integrer_document_briefing(doc)
-
-    vocal = f"Document {doc['filename']} ingere, {doc['chars']} caracteres, methode {doc['methode']}. "
-    if spec.get("resume_executif"):
-        vocal += "Analyse cognitive enregistree en memoire long terme. "
-    if doc.get("is_cahier_charges"):
-        vocal += "Cahier des charges detecte. "
-    if champs_remplis:
-        vocal += f"Briefing enrichi : {', '.join(champs_remplis)}. "
-    if _site_dev and _site_dev.collecte_documents_active():
-        vocal += "Dites scanne les documents ou continue sans document."
-    elif _site_dev and _site_dev.briefing_actif():
-        vocal += "Continuez ou dites lance le developpement."
-    else:
-        vocal += "Utilise pour le prochain projet web."
 
     if websocket:
         await websocket.send(json.dumps({
@@ -4624,9 +5050,57 @@ async def traiter_upload_document(data: dict, websocket=None):
             "is_cahier_charges": doc.get("is_cahier_charges", False),
             "champs_briefing": champs_remplis,
             "resume": doc.get("resume", "")[:400],
+            "categorie": cat,
+            "categorie_confiance": conf,
         }))
 
-    await parler(vocal)
+
+async def _test_voice_tts(voice_id: str, tone_name: str, websocket):
+    """Teste une voix TTS et la joue sur le PC ou l'envoie au mobile."""
+    if not edge_tts:
+        return
+    texte = f"Ceci est un test vocal pour le profil {tone_name}."
+    tmp = f"jarvis_test_voice_{int(time.time()*1000)}.mp3"
+    try:
+        communicate = edge_tts.Communicate(texte, voice=voice_id)
+        await communicate.save(tmp)
+        if _skip_pc_audio and CONNECTED_CLIENTS:
+            with open(tmp, "rb") as f:
+                audio_b64 = base64.b64encode(f.read()).decode('utf-8')
+            message = json.dumps({"action": "jarvis_audio", "text": texte, "audio_b64": audio_b64})
+            await websocket.send(message)
+        elif pygame:
+            init_mixer()
+            pygame.mixer.music.load(tmp)
+            pygame.mixer.music.play()
+    except Exception as e:
+        print(f"[TTS] Erreur test vocal : {e}")
+
+async def _confirmer_categorie_document(doc_id: str, categorie: str, websocket):
+    """Met à jour la catégorie d'un document après confirmation."""
+    if _doc_ingest and hasattr(_doc_ingest, 'mettre_a_jour_categorie'):
+        _doc_ingest.mettre_a_jour_categorie(doc_id, categorie, 1.0, True)
+    
+    # Reload documents lists
+    if websocket:
+        docs = [
+            {"filename": d["filename"], "date": d["date"], "chars": d["chars"], "context": d.get("context"), "categorie": d.get("categorie", ""), "categorie_confiance": d.get("categorie_confiance", 0)}
+            for d in _doc_ingest.lister_documents()
+        ]
+        await websocket.send(json.dumps({"type": "documents_list", "documents": docs}))
+        
+    await parler(f"Catégorie confirmée : {categorie}.")
+
+def _sauver_learning_par_mode(mode: str, doc: dict, spec: dict):
+    """Enregistre un fait d'apprentissage lié au document dans le bon mode."""
+    if not _knowledge:
+        return
+    sujet = f"Document {mode} - {doc.get('filename')}"
+    desc = doc.get("resume", "")[:500]
+    try:
+        _knowledge.memoriser(sujet, desc, "", categorie=mode, source="auto:document")
+    except Exception as e:
+        print(f"[LEARNING] Erreur mémorisation par mode : {e}")
 
 
 def _charger_config() -> dict:

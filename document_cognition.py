@@ -19,6 +19,16 @@ SPEC_KEYS = (
     "contenu_cles", "seo", "accessibilite",
 )
 
+CATEGORIE_TO_MODE = {
+    "prive": "personnel",
+    "travail": "professionnel",
+    "apprentissage": "apprentissage",
+    "amitie": "ami",
+    "dev": "dev",
+    "briefing": "dev",
+    "general": "general",
+}
+
 
 def init(jarvis_root: str) -> None:
     global _jarvis_root, _knowledge_file
@@ -186,17 +196,95 @@ Document : {filename}
 {texte}
 """
 
+PROMPT_CLASSIFICATION = """Analyse ce document et classifie-le dans UNE seule catégorie.
+
+Catégories possibles :
+- "prive" : document personnel (factures, santé, administratif, identité, famille)
+- "travail" : document professionnel (contrats, clients, facturation, gestion, RH)
+- "apprentissage" : cours, tutoriels, documentation technique, notes d'étude, formations
+- "amitie" : messages personnels, photos souvenirs, événements sociaux, loisirs
+- "dev" : code source, logs, configuration, fichiers techniques, debug
+- "briefing" : brief client, maquettes, cahier des charges, spécifications de projet web
+
+Réponds UNIQUEMENT avec un objet JSON valide (pas de markdown) :
+{{
+  "categorie": "...",
+  "confiance": 0.85,
+  "raison": "explication courte de pourquoi cette catégorie"
+}}
+
+Fichier : {filename}
+Extrait :
+{texte}
+"""
+
+PROMPT_ANALYSE_GENERAL = """Tu es un assistant intelligent. Analyse ce document et extrais les informations clés.
+
+Réponds UNIQUEMENT avec un objet JSON valide (pas de markdown) :
+{{
+  "sujet": "",
+  "resume_executif": "synthèse en 5 phrases",
+  "points_cles": ["..."],
+  "dates_importantes": ["..."],
+  "personnes_mentionnees": ["..."],
+  "actions_requises": ["..."],
+  "donnees_sensibles": false
+}}
+
+Document : {filename}
+---
+{texte}
+"""
+
+
+async def classifier_document(
+    doc: dict[str, Any],
+    llm_fn: Callable[[str], Awaitable[str | None]],
+) -> dict[str, Any]:
+    """Classifie un document via LLM — retourne {categorie, confiance, raison}."""
+    texte = doc.get("texte") or doc.get("resume") or ""
+    if len(texte.strip()) < 15:
+        return {"categorie": "general", "confiance": 0.5, "raison": "texte trop court"}
+
+    prompt = PROMPT_CLASSIFICATION.format(
+        filename=doc.get("filename", "document"),
+        texte=texte[:3000],
+    )
+    try:
+        rep = await llm_fn(prompt)
+        if not rep:
+            return {"categorie": "general", "confiance": 0.3, "raison": "pas de réponse LLM"}
+        result = _parse_json_reponse(rep)
+        if not result or "categorie" not in result:
+            return {"categorie": "general", "confiance": 0.3, "raison": "réponse non parsable"}
+        # Valider la catégorie
+        cats_valides = ("prive", "travail", "apprentissage", "amitie", "dev", "briefing")
+        cat = result.get("categorie", "general").lower().strip()
+        if cat not in cats_valides:
+            cat = "general"
+        conf = min(1.0, max(0.0, float(result.get("confiance", 0.5))))
+        return {
+            "categorie": cat,
+            "confiance": round(conf, 2),
+            "raison": str(result.get("raison", ""))[:200],
+        }
+    except Exception as e:
+        print(f"[COGNITION] Erreur classification : {e}")
+        return {"categorie": "general", "confiance": 0.3, "raison": str(e)[:100]}
+
 
 async def analyser_document_cognitif(
     doc: dict[str, Any],
     llm_fn: Callable[[str], Awaitable[str | None]],
+    categorie: str = "general",
 ) -> dict[str, Any]:
     """Appelle le LLM pour extraire une spec structurée."""
     texte = doc.get("texte") or doc.get("resume") or ""
     if len(texte.strip()) < 20:
         return {}
 
-    prompt = PROMPT_ANALYSE.format(
+    prompt_to_use = PROMPT_ANALYSE if categorie in ("dev", "briefing") else PROMPT_ANALYSE_GENERAL
+    prompt = prompt_to_use.format(
         filename=doc.get("filename", "document"),
         texte=texte[:18000],
     )
@@ -217,9 +305,10 @@ async def analyser_et_memoriser(
     doc: dict[str, Any],
     llm_fn: Callable[[str], Awaitable[str | None]],
     sauver_learning_fn: Callable[[str, str, str], str] | None = None,
+    categorie: str = "general",
 ) -> dict[str, Any]:
     """Pipeline complet : analyse LLM + mémoire long terme + base apprentissage."""
-    spec = await analyser_document_cognitif(doc, llm_fn)
+    spec = await analyser_document_cognitif(doc, llm_fn, categorie)
     if not spec:
         return {}
 
